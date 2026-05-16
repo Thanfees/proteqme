@@ -1,7 +1,0 @@
-{
-  "name": "proteqme-convex",
-  "private": true,
-  "dependencies": {
-    "convex": "^1.21.0"
-  }
-}

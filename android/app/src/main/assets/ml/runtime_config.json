@@ -1,0 +1,15 @@
+{
+  "sample_rate": 16000,
+  "chunk_samples": 16000,
+  "help_threshold": 0.7,
+  "scream_threshold": 0.45,
+  "use_asr_help": true,
+  "asr_model_dir": "vosk-model-small-en-us-0.15",
+  "asr_word_confidence_threshold": 0.55,
+  "asr_fallback_confidence": 0.72,
+  "required_detections": 3,
+  "window_ms": 10000,
+  "debounce_ms": 2000,
+  "cooldown_ms": 60000,
+  "trigger_mode": "HELP_ONLY"
+}

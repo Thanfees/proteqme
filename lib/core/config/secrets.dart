@@ -1,4 +1,4 @@
-/// Runtime secrets — prefer `--dart-define` in CI; local copy from `.example`.
+/// Runtime secrets — pass via `--dart-define` or copy from `.example`.
 class Secrets {
   Secrets._();
 

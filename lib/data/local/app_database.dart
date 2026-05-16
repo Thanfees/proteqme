@@ -1,100 +1,118 @@
-import 'package:path/path.dart' as p;
+import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
-/// Versioned SQLite database for offline-first SOS state.
+/// SQLite for SOS state, GPS trail, and Convex pending sync.
 class AppDatabase {
   AppDatabase._();
-  static final AppDatabase instance = AppDatabase._();
+  static AppDatabase? _instance;
+  static Database? _db;
 
-  static const int _version = 1;
-  Database? _db;
-
-  Future<Database> get database async {
-    if (_db != null) return _db!;
+  static Future<AppDatabase> instance() async {
+    if (_instance != null) return _instance!;
+    _instance = AppDatabase._();
     _db = await _open();
-    return _db!;
+    return _instance!;
   }
 
-  Future<Database> _open() async {
-    final path = p.join(await getDatabasesPath(), 'proteqme.db');
+  static Future<Database> _open() async {
+    final dbPath = await getDatabasesPath();
     return openDatabase(
-      path,
-      version: _version,
-      onCreate: _onCreate,
-      onUpgrade: _onUpgrade,
+      join(dbPath, 'proteqme.db'),
+      version: 1,
+      onCreate: (db, version) async {
+        await db.execute('''
+          CREATE TABLE sos_state (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            is_active INTEGER NOT NULL DEFAULT 0,
+            user_name TEXT NOT NULL DEFAULT 'ProteqMe User',
+            sms_interval_sec INTEGER NOT NULL DEFAULT 360,
+            call_paused INTEGER NOT NULL DEFAULT 0,
+            triggered_at_ms INTEGER
+          )
+        ''');
+        await db.insert('sos_state', {'id': 1});
+
+        await db.execute('''
+          CREATE TABLE gps_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp_ms INTEGER NOT NULL,
+            lat REAL NOT NULL,
+            lng REAL NOT NULL,
+            source TEXT NOT NULL
+          )
+        ''');
+
+        await db.execute('''
+          CREATE TABLE pending_sync (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            payload_json TEXT NOT NULL,
+            created_at_ms INTEGER NOT NULL
+          )
+        ''');
+
+        await db.execute('''
+          CREATE TABLE auth_session (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            user_id TEXT,
+            phone TEXT,
+            display_name TEXT
+          )
+        ''');
+        await db.insert('auth_session', {'id': 1});
+      },
     );
   }
 
-  Future<void> _onCreate(Database db, int version) async {
-    await db.execute('''
-      CREATE TABLE contacts (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        phone TEXT NOT NULL,
-        priority INTEGER NOT NULL UNIQUE,
-        language TEXT NOT NULL DEFAULT 'en',
-        convex_id TEXT
-      )
-    ''');
+  Database get db {
+    final database = _db;
+    if (database == null) {
+      throw StateError('AppDatabase not initialized');
+    }
+    return database;
+  }
 
-    await db.execute('''
-      CREATE TABLE sos_state (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
-        is_active INTEGER NOT NULL DEFAULT 0,
-        triggered_at INTEGER,
-        user_name TEXT NOT NULL DEFAULT '',
-        sms_interval_sec INTEGER NOT NULL DEFAULT 360,
-        call_paused INTEGER NOT NULL DEFAULT 0
-      )
-    ''');
+  Future<void> setSosActive({
+    required bool active,
+    String userName = 'ProteqMe User',
+    int smsIntervalSec = 360,
+  }) async {
+    await db.update(
+      'sos_state',
+      {
+        'is_active': active ? 1 : 0,
+        'user_name': userName,
+        'sms_interval_sec': smsIntervalSec,
+        'triggered_at_ms': active ? DateTime.now().millisecondsSinceEpoch : null,
+        'call_paused': 0,
+      },
+      where: 'id = ?',
+      whereArgs: [1],
+    );
+  }
 
-    await db.insert('sos_state', {
-      'id': 1,
-      'is_active': 0,
-      'user_name': '',
-      'sms_interval_sec': 360,
-      'call_paused': 0,
+  Future<bool> isSosActive() async {
+    final rows = await db.query('sos_state', where: 'id = ?', whereArgs: [1]);
+    if (rows.isEmpty) return false;
+    return (rows.first['is_active'] as int? ?? 0) == 1;
+  }
+
+  Future<void> appendGpsLog({
+    required double lat,
+    required double lng,
+    required String source,
+  }) async {
+    await db.insert('gps_log', {
+      'timestamp_ms': DateTime.now().millisecondsSinceEpoch,
+      'lat': lat,
+      'lng': lng,
+      'source': source,
     });
-
-    await db.execute('''
-      CREATE TABLE gps_log (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp INTEGER NOT NULL,
-        lat REAL NOT NULL,
-        lng REAL NOT NULL,
-        accuracy REAL,
-        source TEXT NOT NULL
-      )
-    ''');
-
-    await db.execute('''
-      CREATE TABLE call_log (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        contact_id INTEGER,
-        started_at INTEGER NOT NULL,
-        ended_at INTEGER,
-        duration_sec INTEGER,
-        outcome TEXT NOT NULL,
-        FOREIGN KEY (contact_id) REFERENCES contacts(id)
-      )
-    ''');
-
-    await db.execute('''
-      CREATE TABLE pending_sync (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        payload TEXT NOT NULL,
-        created_at INTEGER NOT NULL,
-        retry_count INTEGER NOT NULL DEFAULT 0
-      )
-    ''');
   }
 
-  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    // Future migrations here.
-  }
-
-  Future<void> close() async {
-    await _db?.close();
-    _db = null;
+  Future<void> queuePendingSync(String payloadJson) async {
+    await db.insert('pending_sync', {
+      'payload_json': payloadJson,
+      'created_at_ms': DateTime.now().millisecondsSinceEpoch,
+    });
   }
 }

@@ -1,22 +1,7 @@
-import com.android.build.gradle.LibraryExtension
-
 allprojects {
     repositories {
         google()
         mavenCentral()
-    }
-}
-
-// telephony 0.2.0 predates AGP 8 namespace requirement (discontinued package)
-subprojects {
-    afterEvaluate {
-        if (name != "telephony") return@afterEvaluate
-        extensions.findByType<LibraryExtension>()?.apply {
-            if (namespace.isNullOrEmpty()) {
-                namespace = "com.shounakmulay.telephony"
-            }
-            compileSdk = 34
-        }
     }
 }
 

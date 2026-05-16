@@ -1,0 +1,14 @@
+{
+  "speech_commands": {
+    "success": false,
+    "message": "Speech Commands download failed: (\"Connection broken: ConnectionAbortedError(10053, 'An established connection was aborted by the software in your host machine', None, 10053, None)\", ConnectionAbortedError(10053, 'An established connection was aborted by the software in your host machine', None, 10053, None))"
+  },
+  "esc50": {
+    "success": false,
+    "message": "ESC-50 download failed: HTTPSConnectionPool(host='github.com', port=443): Max retries exceeded with url: /karolpiczak/ESC-50/archive/refs/heads/master.zip (Caused by NameResolutionError(\"<urllib3.connection.HTTPSConnection object at 0x000001C766B35160>: Failed to resolve 'github.com' ([Errno 11001] getaddrinfo failed)\"))"
+  },
+  "urbansound8k": {
+    "success": false,
+    "message": "UrbanSound8K automatic download failed for all attempted URLs. Manual fallback: download UrbanSound8K and place extracted folder under data/raw/urbansound8k/UrbanSound8K."
+  }
+}

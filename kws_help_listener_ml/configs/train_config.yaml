@@ -1,0 +1,102 @@
+project_name: "kws_help_listener"
+
+paths:
+  raw_root: "data/raw"
+  interim_root: "data/interim"
+  processed_root: "data/processed"
+  custom_help_root: "data/custom/help"
+  custom_not_help_root: "data/custom/not_help"
+  metadata_csv: "data/processed/metadata.csv"
+  split_csv: "data/processed/splits.csv"
+  checkpoints_dir: "outputs/checkpoints"
+  models_dir: "outputs/models"
+  metrics_dir: "outputs/metrics"
+  plots_dir: "outputs/plots"
+
+audio:
+  sample_rate: 16000
+  clip_duration_sec: 1.0
+  mono: true
+  trim_silence: false
+  normalize: true
+  silence_threshold_db: 40
+
+feature:
+  type: "mfcc"   # options: mfcc, log_mel
+  n_mfcc: 40
+  n_mels: 40
+  frame_length: 640
+  frame_step: 320
+  fft_length: 1024
+  lower_hz: 20
+  upper_hz: 7600
+
+dataset:
+  min_positive_samples: 30
+  add_synthetic_silence_negatives: true
+  synthetic_silence_count: 500
+
+split:
+  train_ratio: 0.70
+  val_ratio: 0.15
+  test_ratio: 0.15
+  random_state: 42
+
+augmentation:
+  enabled: true
+  apply_to_positive_probability: 0.9
+  apply_to_negative_probability: 0.3
+  random_gain:
+    enabled: true
+    min_db: -6.0
+    max_db: 6.0
+  time_shift:
+    enabled: true
+    max_shift_ms: 80
+  pitch_shift:
+    enabled: true
+    max_steps: 1.0
+  speed_perturb:
+    enabled: true
+    min_rate: 0.9
+    max_rate: 1.1
+  additive_noise:
+    enabled: true
+    snr_db_min: 8
+    snr_db_max: 24
+  background_noise_mix:
+    enabled: true
+    min_scale: 0.03
+    max_scale: 0.30
+  reverb:
+    enabled: false
+    decay: 0.35
+    delay_ms: 18
+
+model:
+  type: "dscnn"  # options: cnn, dscnn
+  dropout: 0.25
+  base_filters: 24
+
+training:
+  batch_size: 64
+  epochs: 35
+  learning_rate: 0.001
+  label_smoothing: 0.0
+  early_stopping_patience: 8
+  reduce_lr_patience: 3
+  reduce_lr_factor: 0.5
+  class_weighting: true
+  target_recall_weight: 1.0
+
+evaluation:
+  classification_threshold: 0.5
+  optimize_for_recall: true
+
+tflite:
+  export_float_tflite: true
+  export_quant_tflite: true
+  representative_samples: 200
+
+logging:
+  level: "INFO"

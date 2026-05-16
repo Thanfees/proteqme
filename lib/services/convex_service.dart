@@ -1,83 +1,120 @@
-// convex_dart exposes client via src/ — required for encode/decode helpers.
-// ignore_for_file: implementation_imports
+import 'dart:convert';
 
-import 'package:convex_dart/src/encode.dart';
-import 'package:convex_dart/src/internal_convex_client.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 
 import '../core/config/secrets.dart';
-import '../data/models/contact.dart';
 
-/// Convex client — setup sync and post-incident upload only (never SOS hot path).
+/// Convex vault via HTTP API (auth, contacts, live location, incident logs).
 class ConvexService {
-  ConvexService._();
-  static final ConvexService instance = ConvexService._();
+  ConvexService({required this.baseUrl, this.deployKey = ''});
 
-  InternalConvexClient? _client;
-  bool _initialized = false;
+  final String baseUrl;
+  final String deployKey;
 
-  bool get isConfigured => Secrets.hasConvex;
-
-  Future<InternalConvexClient> _ensureClient() async {
-    if (!isConfigured) {
-      throw StateError('Convex not configured. Set CONVEX_URL and CONVEX_DEPLOY_KEY.');
-    }
-    if (!_initialized) {
-      _client = await InternalConvexClient.init(
-        deploymentUrl: Secrets.convexUrl,
-      );
-      _initialized = true;
-    }
-    return _client!;
+  static ConvexService? tryCreate() {
+    if (!Secrets.hasConvex) return null;
+    return ConvexService(
+      baseUrl: Secrets.convexUrl,
+      deployKey: Secrets.convexDeployKey,
+    );
   }
 
-  Future<List<Contact>> fetchContacts(String userId) async {
-    if (!isConfigured) return [];
-    final client = await _ensureClient();
-    final result = await client.query(
-      name: 'contacts:listByUser',
-      args: encodeMap({'userId': userId}),
-    );
-    final decoded = decodeValue(result);
-    if (decoded is! Iterable) return [];
-    return decoded.map((item) {
-      final map = Map<String, dynamic>.from(item as Map);
-      return Contact(
-        name: map['name'] as String,
-        phone: map['phone'] as String,
-        priority: map['priority'] as int,
-        language: map['language'] as String? ?? 'en',
-        convexId: map['_id']?.toString(),
-      );
-    }).toList();
+  Future<Map<String, dynamic>?> requestOtp(String phone) async {
+    return _mutation('auth:requestOtp', {'phone': phone});
   }
 
-  Future<void> upsertContacts(String userId, List<Contact> contacts) async {
-    if (!isConfigured) return;
-    final client = await _ensureClient();
-    await client.mutation(
-      name: 'contacts:upsertBatch',
-      args: encodeMap({
-        'userId': userId,
-        'contacts': contacts
-            .map(
-              (c) => {
-                'name': c.name,
-                'phone': c.phone,
-                'priority': c.priority,
-                'language': c.language,
-              },
-            )
-            .toList(),
-      }),
-    );
+  Future<Map<String, dynamic>?> verifyOtp({
+    required String phone,
+    required String code,
+  }) async {
+    return _mutation('auth:verifyOtp', {'phone': phone, 'code': code});
+  }
+
+  Future<void> syncContacts({
+    required String userId,
+    required List<Map<String, dynamic>> contacts,
+  }) async {
+    await _mutation('contacts:upsertBatch', {
+      'userId': userId,
+      'contacts': contacts,
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> fetchContacts(String userId) async {
+    final result = await _query('contacts:listByUser', {'userId': userId});
+    if (result is List) {
+      return result.cast<Map<String, dynamic>>();
+    }
+    return const [];
+  }
+
+  Future<void> pushLiveLocation({
+    required String userId,
+    required double lat,
+    required double lng,
+    required bool sosActive,
+  }) async {
+    await _mutation('liveLocation:update', {
+      'userId': userId,
+      'lat': lat,
+      'lng': lng,
+      'sosActive': sosActive,
+      'timestampMs': DateTime.now().millisecondsSinceEpoch,
+    });
   }
 
   Future<void> recordSosEvent(Map<String, dynamic> payload) async {
-    if (!isConfigured) return;
-    final client = await _ensureClient();
-    await client.mutation(
-      name: 'sos_events:record',
-      args: encodeMap(payload),
-    );
+    await _mutation('sosEvents:record', payload);
+  }
+
+  Future<dynamic> _query(String name, Map<String, dynamic> args) async {
+    final response = await _post('/api/query', name, args);
+    return response?['value'];
+  }
+
+  Future<Map<String, dynamic>?> _mutation(
+    String name,
+    Map<String, dynamic> args,
+  ) async {
+    final response = await _post('/api/mutation', name, args);
+    final value = response?['value'];
+    if (value is Map) {
+      return Map<String, dynamic>.from(value);
+    }
+    return null;
+  }
+
+  Future<Map<String, dynamic>?> _post(
+    String path,
+    String functionName,
+    Map<String, dynamic> args,
+  ) async {
+    final uri = Uri.parse('$baseUrl$path');
+    final headers = <String, String>{'Content-Type': 'application/json'};
+    if (deployKey.isNotEmpty) {
+      headers['Authorization'] = 'Convex $deployKey';
+    }
+
+    final body = jsonEncode({
+      'path': functionName,
+      'args': args,
+      'format': 'json',
+    });
+
+    final response = await http.post(uri, headers: headers, body: body);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Convex HTTP ${response.statusCode}: ${response.body}');
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is Map<String, dynamic>) {
+      return decoded;
+    }
+    return null;
   }
 }
+
+final convexServiceProvider = Provider<ConvexService?>((ref) {
+  return ConvexService.tryCreate();
+});
