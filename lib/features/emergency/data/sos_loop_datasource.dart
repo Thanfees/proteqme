@@ -18,8 +18,16 @@ class SosLoopDatasource {
   }) async {
     if (!Platform.isAndroid) return;
 
+    final sorted = List<EmergencyContact>.from(contacts)
+      ..sort((a, b) {
+        if (a.isPrimary != b.isPrimary) {
+          return a.isPrimary ? -1 : 1;
+        }
+        return a.name.compareTo(b.name);
+      });
+
     final payload =
-        contacts.asMap().entries.map((entry) {
+        sorted.asMap().entries.map((entry) {
           final c = entry.value;
           return {
             'phone': c.phone,

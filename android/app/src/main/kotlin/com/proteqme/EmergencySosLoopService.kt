@@ -137,7 +137,7 @@ class EmergencySosLoopService : Service() {
         val numbers = contacts.map { it.phone }.distinct()
 
         if (location != null) {
-            for (contact in contacts) {
+            contacts.forEachIndexed { index, contact ->
                 val message =
                     SosMessageTemplates.ongoing(
                         prefs.userName,
@@ -145,7 +145,12 @@ class EmergencySosLoopService : Service() {
                         location.longitude,
                         contact.language,
                     )
-                smsHelper.sendEmergencySms(listOf(contact.phone), message)
+                // Stagger so each EmergencyActionActivity can send (avoid pile-up).
+                mainHandler.postDelayed({
+                    if (prefs.isActive) {
+                        smsHelper.sendEmergencySms(listOf(contact.phone), message)
+                    }
+                }, index * 1_500L)
             }
         } else {
             val fallback =
@@ -177,9 +182,11 @@ class EmergencySosLoopService : Service() {
 
     private fun disarm() {
         val contacts = prefs.loadContacts()
-        for (contact in contacts) {
+        contacts.forEachIndexed { index, contact ->
             val msg = SosMessageTemplates.resolved(prefs.userName, contact.language)
-            smsHelper.sendEmergencySms(listOf(contact.phone), msg)
+            mainHandler.postDelayed({
+                smsHelper.sendEmergencySms(listOf(contact.phone), msg)
+            }, index * 1_500L)
         }
 
         prefs.clearLoop()

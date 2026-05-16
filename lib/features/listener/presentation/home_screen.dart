@@ -520,6 +520,21 @@ class HomeScreen extends ConsumerWidget {
       }
     }
 
+    if (PlatformUtils.isAndroid &&
+        (!permissions.callGranted || !permissions.smsGranted)) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Phone and SMS permissions are required for ProteqMe to call and text '
+            'your emergency contacts. Open Permissions and allow both.',
+          ),
+          duration: Duration(seconds: 6),
+        ),
+      );
+      return;
+    }
+
     final result = await controller.trigger(
       triggerType: triggerType,
       primaryContact: primaryContact,
