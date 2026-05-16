@@ -3,7 +3,7 @@
 This document outlines the technical skills, frameworks, and domain knowledge required to develop **ProteqMe**, an offline-first, voice-activated emergency application.
 
 ## 1. Mobile Frontend Development
-*   **Cross-Platform Frameworks:** Proficiency in **React Native** (understanding both Expo and Bare workflows) or **Flutter**.
+*   **Cross-Platform Frameworks:** Proficiency in **Flutter**.
 *   **State Management:** Handling complex app states, particularly managing the transition between online (syncing) and offline (emergency) modes.
 *   **Background Execution:** Building and managing continuous background workers/services that consume minimal battery life.
 
