@@ -1,0 +1,14 @@
+flowchart TD
+  ContactsUI[Contacts Screen] --> Controller[ContactsController]
+  Controller --> LocalRepo[Hive Contact Repository]
+  LocalRepo --> Hive[(Local Contacts)]
+
+  Controller --> ConvexService[ConvexService]
+  ConvexService --> ConvexContacts[Convex contacts.ts]
+
+  ProfileUI[Profile Screen] --> AppDB[AppDatabase sqflite]
+  AppDB --> SosState[(sos_state table)]
+  ProfileUI --> ConvexProfile[Convex user profile]
+
+  AppDB --> SMSName[User Name in SOS SMS]
+  Hive --> EmergencyContacts[Emergency Workflow Contacts]

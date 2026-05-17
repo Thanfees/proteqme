@@ -1,0 +1,30 @@
+flowchart TD
+  Start[Open App] --> Lock{Biometric lock enabled?}
+  Lock -->|Yes| Bio[Fingerprint / PIN Auth]
+  Lock -->|No| Home[Home Screen]
+  Bio -->|Success| Home
+  Bio -->|Fail| Locked[Stay Locked]
+
+  Home --> GPS[GPS Status Pill]
+  Home --> Listen[SOS Listening Mode Toggle]
+  Home --> SOS[SOS Emergency Button]
+  Home --> Contacts[Contacts]
+  Home --> Features[Features Hub]
+  Home --> Overwatch[Safe Journey / Overwatch]
+
+  Listen --> NativeListener[SosListenerService]
+  NativeListener --> Detect{HELP / Scream Detected?}
+  Detect -->|Yes| Emergency
+
+  SOS --> Emergency[Emergency Workflow]
+  Overwatch --> Timer[Native AlarmManager Timer]
+  Timer -->|Expires| Emergency
+
+  Emergency --> SMS[Send SMS to all contacts]
+  SMS --> Delay[3 second buffer]
+  Delay --> Call[Call primary contact]
+  Emergency --> Overlay[I AM SAFE Overlay]
+
+  Overlay --> SafeAuth[Biometric / PIN Verification]
+  SafeAuth -->|Success| Disarm[Stop SOS Loop]
+  SafeAuth -->|Fail| Emergency

@@ -1,0 +1,18 @@
+flowchart TD
+  User[User starts Safe Journey] --> FlutterCard[Overwatch Flutter Card]
+  FlutterCard --> Channel[MethodChannel com.proteqme/overwatch]
+  Channel --> Scheduler[OverwatchScheduler]
+  Scheduler --> Prefs[OverwatchPrefs SharedPreferences]
+  Scheduler --> Alarm[AlarmManager Exact Alarm]
+
+  Alarm --> Warning{60 seconds left?}
+  Warning -->|Yes| WarnNotify[Warning Notification + UI Event]
+  WarnNotify --> UserCheck[User taps I Arrived Safely]
+
+  UserCheck --> Bio[Biometric / PIN Auth]
+  Bio -->|Success| Cancel[cancelOverwatchTimer]
+  Cancel --> Clear[Clear Alarm + Prefs]
+
+  Alarm -->|Expired| Receiver[OverwatchExpiredReceiver]
+  Receiver --> Emergency[Emergency WorkflowExecutor]
+  Emergency --> OverwatchSMS[Overwatch-specific SOS SMS]

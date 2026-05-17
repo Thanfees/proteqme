@@ -1,0 +1,7 @@
+flowchart LR
+  Mic[Microphone AudioRecord] --> PCM[PCM Audio Chunks]
+  PCM --> Vosk[Vosk ASR HELP Detection]
+  PCM --> YAMNet[YAMNet Sound Classifier]
+  Vosk --> StateMachine[TriggerStateMachine]
+  YAMNet --> StateMachine
+  StateMachine -->|Threshold + debounce + count passed| SOS[Emergency Workflow]

@@ -1,0 +1,16 @@
+flowchart TD
+  MainActivity[MainActivity] --> ServiceChannel[com.proteqme/service]
+  MainActivity --> OverwatchChannel[com.proteqme/overwatch]
+  MainActivity --> EventChannels[EventChannels]
+
+  ServiceChannel --> Listener[SosListenerService]
+  ServiceChannel --> SosLoop[EmergencySosLoopService]
+
+  Listener --> Boot[BootReceiver]
+  Boot --> Watchdog[ListenerWatchdogScheduler]
+  Watchdog --> WatchdogReceiver[ListenerWatchdogReceiver]
+
+  SosLoop --> SmsHelper[SmsManagerHelper]
+  SosLoop --> CallManager[CallManager]
+  SosLoop --> LocationHelper[LocationHelper]
+  SosLoop --> NotificationHelper[NotificationHelper]

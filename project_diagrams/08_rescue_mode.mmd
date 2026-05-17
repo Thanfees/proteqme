@@ -1,0 +1,8 @@
+flowchart LR
+  VictimSOS[Victim triggers SOS] --> Advertise[Auto Nearby Advertising]
+  Advertise --> Nearby[Google Nearby Connections]
+
+  Rescuer[Rescuer opens Rescuer Mode] --> Discover[Manual Discovery]
+  Discover --> Nearby
+  Nearby --> VictimCard[Discovered Victim Card]
+  VictimCard --> Navigate[Open Maps / Navigate]

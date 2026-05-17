@@ -1,0 +1,37 @@
+erDiagram
+  users {
+    string phone
+    string displayName
+    number createdAt
+    string username
+    string passwordHash
+    string passwordSalt
+  }
+
+  contacts {
+    id userId
+    string name
+    string phone
+    number priority
+    string language
+  }
+
+  sos_events {
+    id userId
+    number triggeredAtMs
+    number disarmedAtMs
+    array gpsPoints
+    any payload
+  }
+
+  live_locations {
+    id userId
+    number lat
+    number lng
+    boolean sosActive
+    number timestampMs
+  }
+
+  users ||--o{ contacts : owns
+  users ||--o{ sos_events : creates
+  users ||--o{ live_locations : updates

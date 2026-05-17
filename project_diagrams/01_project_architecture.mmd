@@ -1,0 +1,30 @@
+flowchart TD
+  User[User on Android Phone] --> Flutter[Flutter UI Layer]
+
+  Flutter --> Riverpod[Riverpod Controllers / Providers]
+  Riverpod --> LocalDB[Local Storage: Hive + sqflite]
+  Riverpod --> MethodChannels[Flutter MethodChannels]
+  Riverpod --> ConvexClient[Convex HTTP Client]
+
+  MethodChannels --> Kotlin[Native Kotlin Android Layer]
+  Kotlin --> ListenerService[SosListenerService]
+  Kotlin --> SosLoop[EmergencySosLoopService]
+  Kotlin --> Overwatch[Overwatch AlarmManager Chain]
+  Kotlin --> Rescue[Nearby Rescue Mesh]
+  Kotlin --> AndroidAPIs[Android System APIs]
+
+  ListenerService --> VoiceAI[YAMNet + Vosk HELP Detection]
+  VoiceAI --> Trigger[TriggerStateMachine]
+  Trigger --> SosLoop
+
+  Overwatch --> AlarmManager[AlarmManager RTC_WAKEUP]
+  AlarmManager --> OverwatchReceiver[OverwatchExpiredReceiver]
+  OverwatchReceiver --> SosLoop
+
+  SosLoop --> SMS[SmsManager Direct SMS]
+  SosLoop --> GPS[LocationHelper GPS]
+  SosLoop --> Call[Full-screen Intent Call]
+  SosLoop --> Notifications[NotificationHelper]
+
+  ConvexClient --> Convex[Convex Backend]
+  Convex --> ConvexDB[(Convex Tables)]

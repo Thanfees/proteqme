@@ -1,0 +1,22 @@
+sequenceDiagram
+  participant UI as Flutter UI
+  participant Native as Kotlin EmergencySosLoopService
+  participant GPS as LocationHelper
+  participant SMS as SmsManagerHelper
+  participant Call as CallManager
+  participant Notify as NotificationHelper
+
+  UI->>Native: triggerEmergencyWorkflow()
+  Native->>GPS: getBestLocation()
+  GPS-->>Native: lat/lng or unavailable
+
+  Native->>SMS: send SMS to all contacts
+  SMS-->>Native: sent/delivered callbacks
+
+  Native->>Native: wait 3 seconds
+  Native->>Notify: show full-screen call notification
+  Notify->>Call: launch EmergencyActionActivity
+  Call->>Call: call primary contact
+
+  Native->>UI: SOS active state
+  UI->>UI: show I AM SAFE overlay
