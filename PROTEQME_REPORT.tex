@@ -1,0 +1,586 @@
+\documentclass[12pt,a4paper]{report}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{setspace}
+\usepackage{booktabs}
+\usepackage{tabularx}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!60!black,
+    urlcolor=blue!60!black,
+    citecolor=blue!60!black,
+    pdftitle={ProteqMe Project Report},
+    pdfauthor={ProteqMe Project Team},
+    pdfsubject={Android safety companion project report},
+    pdfkeywords={ProteqMe, emergency app, Android, SOS, safety, disaster, miners, child safety, Convex}
+}
+
+\definecolor{proteqPink}{HTML}{FF2C7A}
+\definecolor{proteqPurple}{HTML}{1B1126}
+\definecolor{proteqDark}{HTML}{08030F}
+\definecolor{proteqGreen}{HTML}{3BE77A}
+\definecolor{proteqOrange}{HTML}{FFB347}
+\definecolor{proteqBlue}{HTML}{4FC3F7}
+
+\titleformat{\chapter}
+  {\normalfont\huge\bfseries\color{proteqPurple}}
+  {\thechapter}{20pt}{}
+
+\titleformat{\section}
+  {\normalfont\Large\bfseries\color{proteqPink}}
+  {\thesection}{12pt}{}
+
+\titleformat{\subsection}
+  {\normalfont\large\bfseries\color{proteqPurple}}
+  {\thesubsection}{10pt}{}
+
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{ProteqMe Project Report}
+\rhead{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\setstretch{1.15}
+\setlist[itemize]{topsep=4pt,itemsep=3pt}
+\setlist[enumerate]{topsep=4pt,itemsep=3pt}
+
+\newcommand{\projectname}{ProteqMe}
+\newcommand{\figpath}{project_diagrams}
+
+\begin{document}
+
+\begin{titlepage}
+    \centering
+    \vspace*{1.5cm}
+    {\Huge \bfseries \textcolor{proteqPink}{ProteqMe}\par}
+    \vspace{0.4cm}
+    {\Large Android Safety Companion with SOS Automation, Voice Detection, Dead-Man's Switch Timer, and Offline Rescue Mesh\par}
+    \vspace{1.2cm}
+    \includegraphics[width=0.82\textwidth]{\figpath/01_project_architecture.png}
+    \vfill
+    {\large Detailed Project Report and Usage Study\par}
+    \vspace{0.2cm}
+    {\large Prepared for Overleaf PDF Compilation\par}
+    \vspace{0.8cm}
+    {\large \today\par}
+\end{titlepage}
+
+\pagenumbering{roman}
+\tableofcontents
+\listoffigures
+\clearpage
+\pagenumbering{arabic}
+
+\chapter*{Executive Summary}
+\addcontentsline{toc}{chapter}{Executive Summary}
+
+\projectname{} is an Android-first personal safety application designed to help people during high-risk situations such as harassment, accidents, isolated travel, disaster displacement, underground work, child safety monitoring, and emergency rescue coordination. The project combines Flutter for user experience, native Kotlin for emergency execution, local offline storage for reliability, and Convex for optional cloud backup and synchronization.
+
+The central purpose of the system is simple: when the user is in danger, the app should quickly alert trusted contacts with useful context. This includes SMS alerts, GPS location, timestamp, the user's name, an automatic call to the primary contact, and an in-app emergency overlay with biometric disarm. The project also includes SOS listening mode, an Overwatch or Safe Journey timer, offline rescue mode, contact import, HyperOS/Poco setup guidance, and Convex cloud support.
+
+This report explains the complete system design, the target users, the usage scenarios, the technical architecture, the emergency workflow, the native Android services, the Convex backend, and the ethical considerations needed for safe deployment.
+
+\chapter{Introduction}
+
+\section{Background}
+
+Many emergency apps fail at the moment they are needed most because they depend only on a foreground screen, internet access, or manual user interaction. In real emergencies, the user may not be able to unlock the phone, open the app, type a message, or explain their location. Android devices also apply strict background restrictions, especially on devices running vendor ROMs such as Xiaomi HyperOS, MIUI, and other aggressive battery managers.
+
+\projectname{} addresses these problems by moving safety-critical work into native Android components. Flutter remains responsible for the user interface and day-to-day interaction, while Kotlin foreground services, broadcast receivers, AlarmManager, SmsManager, location APIs, and full-screen intent notifications handle emergency execution.
+
+\section{Project Goal}
+
+The goal of \projectname{} is to provide a practical Android safety companion that can:
+
+\begin{itemize}
+    \item Trigger emergency alerts through a visible SOS button.
+    \item Detect emergency voice cues through background listening.
+    \item Send SMS alerts to all emergency contacts before starting a call.
+    \item Include user name, timestamp, location link, and trigger context in messages.
+    \item Require biometric or device PIN authentication to cancel emergency states.
+    \item Support a Safe Journey or Dead-Man's Switch timer for preventative safety.
+    \item Provide offline rescue discovery using nearby device communication.
+    \item Store emergency-critical data locally so it works without internet.
+    \item Optionally sync profile, contacts, live location, and SOS events to Convex.
+\end{itemize}
+
+\section{Target Beneficiaries}
+
+\projectname{} is useful for multiple user groups:
+
+\begin{itemize}
+    \item \textbf{Miners and industrial workers:} Workers in isolated or underground environments can use SOS listening, Overwatch timers, and emergency contacts when accidents happen.
+    \item \textbf{Disaster victims:} During floods, landslides, earthquakes, storms, and evacuation events, the rescue mesh and location messages can help responders locate victims.
+    \item \textbf{Children and parent safety:} Parents can configure trusted emergency contacts and use Safe Journey timers for school travel, tuition travel, or late travel.
+    \item \textbf{Normal people:} Anyone walking alone, traveling at night, using ride services, visiting unfamiliar places, or facing medical risk can use the app.
+    \item \textbf{Elderly users and patients:} People with health risks can use the SOS button or voice trigger to alert caretakers.
+    \item \textbf{Rescue volunteers:} Volunteers can use rescuer mode to discover nearby victims who are broadcasting an SOS signal.
+\end{itemize}
+
+\chapter{System Overview}
+
+\section{High-Level Architecture}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{\figpath/01_project_architecture.png}
+    \caption{High-level \projectname{} architecture}
+    \label{fig:architecture}
+\end{figure}
+
+The system is organized into four major layers:
+
+\begin{enumerate}
+    \item \textbf{Flutter application layer:} Screens, navigation, Riverpod state, forms, permissions UI, contacts UI, settings, rescue UI, profile, logs, and emergency overlay.
+    \item \textbf{Local storage layer:} Hive and sqflite store contacts, SOS state, user display name, logs, and emergency-critical data.
+    \item \textbf{Native Android layer:} Kotlin services and receivers handle voice detection, emergency execution, SMS, calls, GPS, Overwatch alarms, reboot recovery, and notifications.
+    \item \textbf{Cloud companion layer:} Convex provides optional cloud authentication, contact sync, live location, and SOS event storage.
+\end{enumerate}
+
+\section{Design Principle}
+
+The most important design principle is that emergency behavior must not depend only on Flutter foreground execution. Flutter timers can stop when the app is killed. Background tasks can be restricted. Internet can disappear. For that reason, the emergency execution path is delegated to native Android components wherever possible.
+
+\chapter{User Experience and Screens}
+
+\section{User Flow}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{\figpath/02_user_flow.png}
+    \caption{Main user flow from app open to emergency disarm}
+    \label{fig:userflow}
+\end{figure}
+
+\section{Home Screen}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.82\textwidth]{\figpath/03_home_screen_layout.png}
+    \caption{Home screen layout hierarchy}
+    \label{fig:homescreen}
+\end{figure}
+
+The home screen is organized for fast emergency access. The top of the screen shows the app name, logo, and settings icon. The next section shows the GPS status pill, followed by the SOS listening card. The large SOS emergency button is the visual center of the screen. Below the emergency area, the user can access contacts and features.
+
+The manual trigger label was removed to simplify the main emergency interaction. The SOS button is now the main visible emergency trigger.
+
+\section{Important Screens}
+
+\begin{longtable}{p{0.25\textwidth}p{0.67\textwidth}}
+\toprule
+\textbf{Screen} & \textbf{Purpose} \\
+\midrule
+Home & Shows GPS status, listening mode, SOS button, Overwatch card, contacts, and features. \\
+Contacts & Add, edit, delete, import, and prioritize emergency contacts. \\
+Features Hub & Access profile, rescue mode, logs, permissions, device setup, and other tools. \\
+Profile & Stores the user's display name used in outgoing SOS messages. \\
+Rescuer Mode & Allows rescuers to scan for victim devices broadcasting SOS rescue signals. \\
+Permissions & Shows required Android permissions and prompts the user to grant them. \\
+Device Setup & Provides Poco, Xiaomi, HyperOS, and battery optimization instructions. \\
+Emergency Overlay & Shows the active SOS state and the biometric-gated I AM SAFE button. \\
+Auth & Connects the user with Convex cloud identity and sync features. \\
+\bottomrule
+\end{longtable}
+
+\chapter{Emergency Workflow}
+
+\section{Emergency Sequence}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{\figpath/04_emergency_workflow.png}
+    \caption{Emergency workflow sequence}
+    \label{fig:emergencyworkflow}
+\end{figure}
+
+The emergency workflow follows a strict order:
+
+\begin{enumerate}
+    \item Validate emergency contacts.
+    \item Fetch the best available location.
+    \item Build an emergency SMS message with name, timestamp, location, and trigger context.
+    \item Send SMS to all emergency contacts.
+    \item Wait briefly so SMS has time to dispatch.
+    \item Trigger a full-screen intent call to the primary contact.
+    \item Keep SOS active until the user verifies safety through biometric or device PIN.
+\end{enumerate}
+
+\section{Why SMS Comes Before Call}
+
+SMS is sent before calling because it carries structured emergency information. A phone call may fail, be missed, or be disconnected. SMS can still provide the contact with the user's name, approximate location, timestamp, and reason for alert. After SMS dispatch, the app starts the call flow.
+
+\section{Biometric Disarm}
+
+The I AM SAFE button is protected using Android biometric or device credential authentication. This prevents accidental or forced cancellation. If authentication fails, the emergency workflow continues.
+
+\chapter{Voice Detection}
+
+\section{Voice Detection Pipeline}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.88\textwidth]{\figpath/05_voice_detection_pipeline.png}
+    \caption{Voice detection pipeline}
+    \label{fig:voicedetection}
+\end{figure}
+
+SOS listening mode uses the microphone through a native Android foreground service. Audio is processed through a voice and sound detection pipeline. The project uses HELP recognition and sound classification ideas through components such as Vosk ASR and YAMNet-style processing.
+
+\section{Trigger Protection}
+
+The detection logic should avoid accidental emergency activation. For this reason, the system uses:
+
+\begin{itemize}
+    \item Trigger windows.
+    \item Detection count thresholds.
+    \item Debounce periods.
+    \item Cooldown intervals.
+    \item Configurable trigger modes.
+\end{itemize}
+
+These controls reduce false positives while still allowing emergency detection when the user cannot manually press the SOS button.
+
+\chapter{Overwatch / Safe Journey Timer}
+
+\section{Purpose}
+
+The Overwatch feature is a Dead-Man's Switch style timer. The user sets a journey duration such as 15 minutes, 30 minutes, 1 hour, or 2 hours. The app starts a native Android countdown. If the user does not confirm arrival before the timer expires, the app automatically triggers the standard SOS workflow.
+
+\section{Overwatch Flow}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{\figpath/06_overwatch_safe_journey.png}
+    \caption{Overwatch or Safe Journey timer flow}
+    \label{fig:overwatch}
+\end{figure}
+
+\section{States}
+
+\begin{longtable}{p{0.25\textwidth}p{0.67\textwidth}}
+\toprule
+\textbf{State} & \textbf{Description} \\
+\midrule
+Setup & User selects duration and optionally enters destination text. \\
+Active & App shows countdown timer and I Arrived Safely button. \\
+Warning & Last 60 seconds trigger a warning notification, haptic feedback, and urgent UI. \\
+Expired & Native receiver triggers the emergency workflow automatically. \\
+Completed & User passes biometric or PIN verification and cancels the timer. \\
+\bottomrule
+\end{longtable}
+
+\section{Why Native AlarmManager Is Used}
+
+Flutter timers are not reliable if the app is swiped away or background restricted. Android AlarmManager allows the app to schedule a wake-up event at a specific time. This is more suitable for safety-critical countdowns.
+
+\section{Reboot Handling}
+
+The timer stores its end timestamp in SharedPreferences. If the phone reboots, BootReceiver can check the remaining time. If the timer has not expired, it re-registers the alarm. If it already expired during reboot, it can trigger the emergency action immediately after boot.
+
+\chapter{Contacts, Profile, and Local Data}
+
+\section{Contact and Profile Data Flow}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{\figpath/07_contact_profile_data_flow.png}
+    \caption{Contact and profile data flow}
+    \label{fig:contactprofile}
+\end{figure}
+
+\section{Emergency Contacts}
+
+Emergency contacts are core to the app. The user can:
+
+\begin{itemize}
+    \item Add contacts manually.
+    \item Import contacts from the phone contact book.
+    \item Select a primary contact.
+    \item Edit and remove saved contacts.
+    \item Use biometric or device PIN authentication for sensitive contact changes.
+\end{itemize}
+
+\section{User Display Name}
+
+The user's display name is used in outgoing SOS messages. This helps contacts understand who is in danger, especially when multiple family members or workers use similar emergency systems.
+
+\section{Offline Reliability}
+
+Contacts and display name are stored locally so emergency alerts can work even when there is no internet connection. Convex sync is useful for backup and restoration, but the emergency path should not depend only on the cloud.
+
+\chapter{Rescue Mode}
+
+\section{Rescue Architecture}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{\figpath/08_rescue_mode.png}
+    \caption{Victim and rescuer rescue mode}
+    \label{fig:rescuemode}
+\end{figure}
+
+\section{Victim Role}
+
+When SOS is triggered, the victim device can automatically advertise a rescue signal. This signal allows nearby rescuers to discover the victim even when normal internet communication is unavailable or unreliable.
+
+\section{Rescuer Role}
+
+The rescuer manually starts rescuer mode. The app scans for nearby victim devices and displays discovered victims. A rescuer can then use available location details to navigate toward the victim.
+
+\section{Disaster Usage}
+
+This feature is especially useful during disasters where cellular networks may be overloaded, unavailable, or partially damaged. It can help volunteers identify nearby victims without requiring every victim to manually coordinate through a server.
+
+\chapter{Convex Backend}
+
+\section{Convex Data Model}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.92\textwidth]{\figpath/09_convex_backend.png}
+    \caption{Convex backend entity relationship diagram}
+    \label{fig:convexbackend}
+\end{figure}
+
+\section{Cloud Responsibilities}
+
+Convex acts as the cloud companion for:
+
+\begin{itemize}
+    \item User identity and profile.
+    \item Contact backup and synchronization.
+    \item Live location mirroring.
+    \item SOS event recording.
+    \item Future cloud escalation workflows.
+\end{itemize}
+
+\section{Why Cloud Is Optional}
+
+The app should still work in emergency conditions without internet. Therefore, Convex improves continuity and backup, but emergency execution remains local-first.
+
+\chapter{Native Android Components}
+
+\section{Native Component Map}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{\figpath/10_native_android_components.png}
+    \caption{Native Android component relationship}
+    \label{fig:nativecomponents}
+\end{figure}
+
+\section{Key Native Components}
+
+\begin{longtable}{p{0.3\textwidth}p{0.62\textwidth}}
+\toprule
+\textbf{Component} & \textbf{Responsibility} \\
+\midrule
+MainActivity & Registers MethodChannels and EventChannels between Flutter and Kotlin. \\
+SosListenerService & Runs background voice detection as a foreground service. \\
+EmergencySosLoopService & Runs the SMS, GPS, call, and SOS loop logic. \\
+SmsManagerHelper & Sends direct SMS and tracks sent or delivered status. \\
+CallManager & Initiates emergency call behavior through full-screen intent flow. \\
+LocationHelper & Fetches best available location for emergency messages. \\
+NotificationHelper & Shows foreground service, emergency call, and warning notifications. \\
+BootReceiver & Restores listener watchdog and time-sensitive alarms after reboot. \\
+OverwatchScheduler & Schedules Safe Journey expiry and warning alarms. \\
+OverwatchExpiredReceiver & Receives Overwatch expiry and starts emergency execution. \\
+\bottomrule
+\end{longtable}
+
+\chapter{Use Case Analysis}
+
+\section{Miners and Industrial Workers}
+
+Mining and industrial work can involve isolation, noise, dust, underground environments, and limited connectivity. \projectname{} can help by providing:
+
+\begin{itemize}
+    \item A fast SOS button for accidents.
+    \item Voice-trigger emergency detection if the user cannot reach the phone.
+    \item Overwatch timers for risky tasks or travel inside work zones.
+    \item SMS alerts to supervisors or emergency contacts.
+    \item Offline rescue signals for nearby responders.
+\end{itemize}
+
+\section{Disaster Victims}
+
+During disasters, victims may be trapped, displaced, or unable to communicate normally. \projectname{} can help by:
+
+\begin{itemize}
+    \item Sending SMS with last known location.
+    \item Broadcasting rescue information nearby.
+    \item Allowing rescuers to manually scan for victims.
+    \item Preserving emergency function even when cloud sync is unavailable.
+\end{itemize}
+
+\section{Child and Parent Safety}
+
+For children, the app can support safer travel and parent awareness:
+
+\begin{itemize}
+    \item Parents can configure emergency contacts.
+    \item Safe Journey timers can be used during travel to school, tuition, or public transport.
+    \item The app can require fingerprint or device PIN for sensitive actions.
+    \item Contact editing can be protected to avoid accidental or unauthorized changes.
+\end{itemize}
+
+This use case must be handled ethically. The app should be used for safety and consent-based protection, not secret surveillance.
+
+\section{Normal People}
+
+Normal users can benefit during:
+
+\begin{itemize}
+    \item Night travel.
+    \item Walking alone.
+    \item Ride-share trips.
+    \item Medical risk situations.
+    \item Travel in unfamiliar areas.
+    \item Domestic safety concerns.
+\end{itemize}
+
+\section{Elderly Users and Patients}
+
+The app can help elderly people or patients who may need urgent assistance. A simple SOS button, emergency contacts, and optional voice trigger can reduce the time needed to alert caretakers.
+
+\chapter{Permissions and Device Setup}
+
+\section{Android Permissions}
+
+\begin{longtable}{p{0.33\textwidth}p{0.57\textwidth}}
+\toprule
+\textbf{Permission} & \textbf{Reason} \\
+\midrule
+Microphone & Required for SOS listening and voice detection. \\
+Location & Required to include GPS map links in SOS messages. \\
+Send SMS & Required for direct emergency SMS alerts. \\
+Call phone & Required for emergency calling flow. \\
+Notifications & Required for foreground services and warning alerts. \\
+Foreground service & Required for long-running emergency and listener services. \\
+Biometric / fingerprint & Required for I AM SAFE, contact protection, and app lock. \\
+Bluetooth / nearby devices & Required for rescue mesh advertising and discovery. \\
+Boot completed & Required to restore watchdogs and timers after reboot. \\
+Exact alarm & Required for reliable Overwatch expiry. \\
+\bottomrule
+\end{longtable}
+
+\section{Poco, Xiaomi, and HyperOS}
+
+Some Android vendors aggressively restrict background apps. For reliable emergency behavior, the user may need to:
+
+\begin{itemize}
+    \item Set battery usage to unrestricted or no restrictions.
+    \item Allow autostart.
+    \item Allow background activity.
+    \item Allow notification display and full-screen notifications.
+    \item Enable SMS sending without confirmation where the device requires it.
+    \item Confirm SIM balance or SMS plan availability.
+\end{itemize}
+
+\chapter{Security, Privacy, and Ethics}
+
+\section{Security Controls}
+
+\projectname{} uses several safety controls:
+
+\begin{itemize}
+    \item Biometric or device PIN for emergency disarm.
+    \item Biometric or device PIN for modifying or removing contacts.
+    \item Optional biometric lock for opening the home screen.
+    \item Local-first emergency data storage.
+    \item Optional cloud sync instead of cloud dependency.
+\end{itemize}
+
+\section{Privacy Considerations}
+
+Because the app handles location, contacts, emergency events, and identity, privacy must be treated seriously. Users should know:
+
+\begin{itemize}
+    \item What data is stored locally.
+    \item What data is uploaded to Convex.
+    \item Who receives SOS messages.
+    \item When rescue broadcasting is active.
+    \item How to disable features safely.
+\end{itemize}
+
+\section{Child Safety Ethics}
+
+For child-parent safety, the app should be used transparently. Children should understand what the app does, who receives emergency alerts, and how the Safe Journey timer works. The app should not be positioned as a hidden tracking tool.
+
+\chapter{Limitations and Future Work}
+
+\section{Current Limitations}
+
+\begin{itemize}
+    \item The app is Android-only.
+    \item Vendor ROMs may still restrict background execution unless configured.
+    \item SMS delivery depends on SIM credit, carrier behavior, and phone settings.
+    \item If the phone battery dies completely, on-device Overwatch cannot fire.
+    \item Convex cloud functions are optional and require correct environment setup.
+    \item Voice detection can have false positives or false negatives in noisy environments.
+\end{itemize}
+
+\section{Future Work}
+
+\begin{itemize}
+    \item Convex and Twilio mirror for zero-battery Overwatch escalation.
+    \item Better cloud retry queue for failed sync.
+    \item Production-grade OTP or username/password authentication.
+    \item More robust offline mesh routing.
+    \item Admin or family dashboard for consent-based safety monitoring.
+    \item Multi-language SOS message templates.
+    \item Wearable integration for fast SOS triggers.
+\end{itemize}
+
+\chapter{Conclusion}
+
+\projectname{} is a practical Android safety companion designed for real-world emergency constraints. Its strongest architectural decision is separating user interface from emergency execution. Flutter provides a clean and accessible UI, while native Kotlin handles background-safe emergency workflows.
+
+The project can help miners, disaster victims, children and parents, elderly users, travelers, and normal people who need a reliable emergency companion. With continued work on cloud escalation, authentication, and device compatibility, \projectname{} can become a strong safety platform for both personal and community emergency response.
+
+\appendix
+
+\chapter{Image Assets Used in This Report}
+
+This report references the following PNG images. When uploading to Overleaf, keep the same folder name `project_diagrams` next to this `.tex` file.
+
+\begin{enumerate}
+    \item `project_diagrams/01_project_architecture.png`
+    \item `project_diagrams/02_user_flow.png`
+    \item `project_diagrams/03_home_screen_layout.png`
+    \item `project_diagrams/04_emergency_workflow.png`
+    \item `project_diagrams/05_voice_detection_pipeline.png`
+    \item `project_diagrams/06_overwatch_safe_journey.png`
+    \item `project_diagrams/07_contact_profile_data_flow.png`
+    \item `project_diagrams/08_rescue_mode.png`
+    \item `project_diagrams/09_convex_backend.png`
+    \item `project_diagrams/10_native_android_components.png`
+\end{enumerate}
+
+\chapter{Overleaf Compilation Notes}
+
+To compile this report in Overleaf:
+
+\begin{enumerate}
+    \item Upload `PROTEQME_REPORT.tex`.
+    \item Upload the complete `project_diagrams` folder.
+    \item Set the compiler to `pdfLaTeX`.
+    \item Click Recompile.
+\end{enumerate}
+
+If images do not appear, confirm that the folder name is exactly `project_diagrams` and that all PNG filenames match the names listed above.
+
+\end{document}

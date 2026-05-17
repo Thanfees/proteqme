@@ -52,7 +52,6 @@ case "$FIRST_ARG" in
     ;;
 esac
 
-exec flutter "$SUBCMD" \
+exec flutter "$SUBCMD" "$@" \
   --dart-define=CONVEX_URL="$CONVEX_URL" \
-  --dart-define=CONVEX_DEPLOY_KEY="$CONVEX_DEPLOY_KEY" \
-  "$@"
+  --dart-define=CONVEX_DEPLOY_KEY="$CONVEX_DEPLOY_KEY"
