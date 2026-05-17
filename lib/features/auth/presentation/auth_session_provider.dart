@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/local/app_database.dart';
 import '../../../services/convex_service.dart';
+import '../../../services/contact_sync_service.dart';
+import '../../../services/live_location_service.dart';
 import '../data/session_store.dart';
 
 /// Snapshot of an authenticated user as the rest of the app sees it.
@@ -115,6 +117,8 @@ class AuthSessionNotifier extends AsyncNotifier<AuthSession?> {
       );
       unawaited(_mirrorDisplayName(record.displayName));
       unawaited(_validateInBackground(record.token));
+      
+      _startServicesInBackground(record.userId);
     } catch (e, st) {
       state = AsyncValue.error(e, st);
     }
@@ -144,6 +148,16 @@ class AuthSessionNotifier extends AsyncNotifier<AuthSession?> {
       // Network failures are not fatal — keep the cached session.
       debugPrint('AuthSession: background validate failed: $e');
     }
+  }
+
+  void _startServicesInBackground(String userId) {
+    // Start live location for parental monitoring
+    unawaited(ref.read(liveLocationServiceFutureProvider.future).then((service) {
+      service.start(userId);
+    }));
+    
+    // Sync contacts
+    unawaited(ref.read(contactSyncServiceProvider).fullSync());
   }
 
   Future<void> signup({
@@ -194,6 +208,8 @@ class AuthSessionNotifier extends AsyncNotifier<AuthSession?> {
           username: username.toLowerCase(),
         ),
       );
+      
+      _startServicesInBackground(userId);
     } catch (e, st) {
       state = AsyncValue.error(e, st);
       rethrow;
@@ -240,6 +256,8 @@ class AuthSessionNotifier extends AsyncNotifier<AuthSession?> {
           username: username.toLowerCase(),
         ),
       );
+
+      _startServicesInBackground(userId);
     } catch (e, st) {
       state = AsyncValue.error(e, st);
       rethrow;
@@ -249,6 +267,11 @@ class AuthSessionNotifier extends AsyncNotifier<AuthSession?> {
   Future<void> signout() async {
     final current = state.valueOrNull;
     final convex = ref.read(convexServiceProvider);
+    
+    // Stop live location tracking
+    unawaited(ref.read(liveLocationServiceFutureProvider.future).then((service) {
+      service.stop();
+    }));
 
     if (current != null && convex != null) {
       try {

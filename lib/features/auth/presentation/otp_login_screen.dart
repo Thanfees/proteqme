@@ -5,6 +5,7 @@ import '../../../core/config/secrets.dart';
 import '../../../core/widgets/brand_scaffold.dart';
 import '../../../data/local/app_database.dart';
 import '../../../services/convex_service.dart';
+import '../../../services/live_location_service.dart';
 import '../../contacts/data/hive_contact_repository.dart';
 import '../../contacts/domain/entities/emergency_contact.dart';
 
@@ -101,6 +102,10 @@ class _OtpLoginScreenState extends ConsumerState<OtpLoginScreen> {
           ),
         );
       }
+      
+      ref.read(liveLocationServiceFutureProvider.future).then((service) {
+        service.start(userId);
+      });
 
       if (mounted) Navigator.pop(context);
     } catch (e) {

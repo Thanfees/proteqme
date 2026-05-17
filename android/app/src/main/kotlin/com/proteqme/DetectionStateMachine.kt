@@ -5,7 +5,7 @@ import kotlin.math.max
 class DetectionStateMachine(
     private val windowMs: Long = 10_000,
     private val debounceMs: Long = 2_000,
-    private val cooldownMs: Long = 60_000,
+    private val cooldownMs: Long = 0,
     private val confidenceThreshold: Float = 0.25f,
 ) {
     private var windowStartMs = 0L

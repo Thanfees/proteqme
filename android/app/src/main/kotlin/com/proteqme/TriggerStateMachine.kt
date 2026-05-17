@@ -24,7 +24,7 @@ data class RuntimeConfig(
     val requiredDetections: Int = 3,
     val windowMs: Long = 10_000L,
     val debounceMs: Long = 2_000L,
-    val cooldownMs: Long = 60_000L,
+    val cooldownMs: Long = 0L,
     val triggerMode: TriggerMode = TriggerMode.ANY,
 ) {
     companion object {

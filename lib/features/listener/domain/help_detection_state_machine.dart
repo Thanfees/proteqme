@@ -18,7 +18,7 @@ class HelpDetectionStateMachine {
   HelpDetectionStateMachine({
     this.window = const Duration(seconds: 10),
     this.debounce = const Duration(seconds: 2),
-    this.cooldown = const Duration(seconds: 60),
+    this.cooldown = Duration.zero,
     this.confidenceThreshold = 0.55,
   });
 

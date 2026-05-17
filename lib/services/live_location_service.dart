@@ -38,25 +38,23 @@ class LiveLocationService {
     if (connectivity.contains(ConnectivityResult.none)) return;
 
     final active = await _db.isSosActive();
-    if (!active) {
-      stop();
-      return;
-    }
 
     final loc = await _location.getCurrentOrLastKnown();
     if (loc == null) return;
 
-    await _db.appendGpsLog(
-      lat: loc.latitude,
-      lng: loc.longitude,
-      source: 'live_push',
-    );
+    if (active) {
+      await _db.appendGpsLog(
+        lat: loc.latitude,
+        lng: loc.longitude,
+        source: 'live_push',
+      );
+    }
 
     await convex.pushLiveLocation(
       userId: userId,
       lat: loc.latitude,
       lng: loc.longitude,
-      sosActive: true,
+      sosActive: active,
     );
   }
 }
