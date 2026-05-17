@@ -6,7 +6,25 @@ export default defineSchema({
     phone: v.string(),
     displayName: v.string(),
     createdAt: v.number(),
-  }).index("by_phone", ["phone"]),
+    // Username/password fields are optional so legacy OTP-only rows still
+    // satisfy the schema while we migrate.
+    username: v.optional(v.string()),
+    passwordHash: v.optional(v.string()),
+    passwordSalt: v.optional(v.string()),
+    email: v.optional(v.string()),
+  })
+    .index("by_phone", ["phone"])
+    .index("by_username", ["username"]),
+
+  sessions: defineTable({
+    userId: v.id("users"),
+    token: v.string(),
+    createdAt: v.number(),
+    lastSeenAt: v.number(),
+    deviceLabel: v.optional(v.string()),
+  })
+    .index("by_token", ["token"])
+    .index("by_user", ["userId"]),
 
   contacts: defineTable({
     userId: v.id("users"),
@@ -14,6 +32,10 @@ export default defineSchema({
     phone: v.string(),
     priority: v.number(),
     language: v.string(),
+    // Optional millisecond timestamps so the client can pick a winner during
+    // last-write-wins merges without breaking older rows.
+    createdAtMs: v.optional(v.number()),
+    updatedAtMs: v.optional(v.number()),
   }).index("by_user", ["userId"]),
 
   sos_events: defineTable({

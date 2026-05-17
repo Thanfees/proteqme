@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_constants.dart';
-import '../../../core/platform/platform_utils.dart';
 import '../domain/entities/detection_event.dart';
 import '../domain/usecases/get_service_status_usecase.dart';
 import '../domain/usecases/start_listening_usecase.dart';
@@ -14,7 +13,6 @@ import '../data/method_channel_listener_service_repository.dart';
 class ListenerControllerState {
   const ListenerControllerState({
     required this.running,
-    required this.iosForegroundMode,
     required this.cooldownRemaining,
     required this.logs,
     required this.loading,
@@ -23,25 +21,21 @@ class ListenerControllerState {
 
   const ListenerControllerState.initial()
     : running = false,
-      iosForegroundMode = false,
       cooldownRemaining = 0,
       logs = const <DetectionEvent>[],
       loading = false,
       error = null;
 
   final bool running;
-  final bool iosForegroundMode;
   final int cooldownRemaining;
   final List<DetectionEvent> logs;
   final bool loading;
   final String? error;
 
-  bool get activeListening =>
-      PlatformUtils.isAndroid ? running : iosForegroundMode;
+  bool get activeListening => running;
 
   ListenerControllerState copyWith({
     bool? running,
-    bool? iosForegroundMode,
     int? cooldownRemaining,
     List<DetectionEvent>? logs,
     bool? loading,
@@ -50,7 +44,6 @@ class ListenerControllerState {
   }) {
     return ListenerControllerState(
       running: running ?? this.running,
-      iosForegroundMode: iosForegroundMode ?? this.iosForegroundMode,
       cooldownRemaining: cooldownRemaining ?? this.cooldownRemaining,
       logs: logs ?? this.logs,
       loading: loading ?? this.loading,
@@ -68,6 +61,11 @@ class ListenerController extends Notifier<ListenerControllerState> {
   Timer? _statusTimer;
   StreamSubscription<DetectionEvent>? _eventSubscription;
 
+  bool _userWantsListening = false;
+  String? _cachedPrimary;
+  List<String> _cachedAll = const [];
+  DateTime? _lastAutoRestart;
+
   @override
   ListenerControllerState build() {
     _startListening = ref.read(startListeningUseCaseProvider);
@@ -75,22 +73,20 @@ class ListenerController extends Notifier<ListenerControllerState> {
     _updatePrimary = ref.read(updatePrimaryNumberUseCaseProvider);
     _getServiceStatus = ref.read(getServiceStatusUseCaseProvider);
 
-    if (PlatformUtils.isAndroid) {
-      final repository = ref.read(
-        methodChannelListenerServiceRepositoryProvider,
-      );
-      _eventSubscription = repository.events.listen(
-        _handleDetectionEvent,
-        onError: (Object error, StackTrace stackTrace) {
-          state = state.copyWith(error: 'Event channel error: $error');
-        },
-      );
+    final repository = ref.read(
+      methodChannelListenerServiceRepositoryProvider,
+    );
+    _eventSubscription = repository.events.listen(
+      _handleDetectionEvent,
+      onError: (Object error, StackTrace stackTrace) {
+        state = state.copyWith(error: 'Event channel error: $error');
+      },
+    );
 
-      Future<void>.microtask(refreshStatus);
-      _statusTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-        refreshStatus();
-      });
-    }
+    Future<void>.microtask(refreshStatus);
+    _statusTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      refreshStatus();
+    });
 
     ref.onDispose(() {
       _statusTimer?.cancel();
@@ -101,28 +97,55 @@ class ListenerController extends Notifier<ListenerControllerState> {
   }
 
   Future<void> refreshStatus() async {
-    if (!PlatformUtils.isAndroid) {
-      return;
-    }
-
     try {
       final serviceStatus = await _getServiceStatus();
+
+      if (serviceStatus.userWantsListening) {
+        _userWantsListening = true;
+        if (serviceStatus.primaryNumber.isNotEmpty) {
+          _cachedPrimary = serviceStatus.primaryNumber;
+        }
+        if (serviceStatus.allNumbers.isNotEmpty) {
+          _cachedAll = serviceStatus.allNumbers;
+        }
+      }
+
       state = state.copyWith(
         running: serviceStatus.running,
         cooldownRemaining: serviceStatus.cooldownRemaining,
       );
+
+      if (_userWantsListening &&
+          !serviceStatus.running &&
+          _cachedPrimary != null &&
+          _cachedPrimary!.isNotEmpty) {
+        final now = DateTime.now();
+        final canRetry = _lastAutoRestart == null ||
+            now.difference(_lastAutoRestart!) > const Duration(seconds: 45);
+        if (canRetry && !state.loading) {
+          _lastAutoRestart = now;
+          await startListening(
+            primaryNumber: _cachedPrimary!,
+            allNumbers: _cachedAll,
+          );
+        }
+      }
     } catch (error) {
       state = state.copyWith(error: 'Status sync failed: $error');
     }
   }
 
-  Future<void> startAndroid({
+  Future<void> startListening({
     required String primaryNumber,
     required List<String> allNumbers,
   }) async {
     state = state.copyWith(loading: true, clearError: true);
 
     try {
+      _userWantsListening = true;
+      _cachedPrimary = primaryNumber;
+      _cachedAll = allNumbers;
+
       await _startListening(
         primaryNumber: primaryNumber,
         allNumbers: allNumbers,
@@ -135,10 +158,11 @@ class ListenerController extends Notifier<ListenerControllerState> {
     }
   }
 
-  Future<void> stopAndroid() async {
+  Future<void> stopListening() async {
     state = state.copyWith(loading: true, clearError: true);
 
     try {
+      _userWantsListening = false;
       await _stopListening();
       await refreshStatus();
     } catch (error) {
@@ -152,9 +176,7 @@ class ListenerController extends Notifier<ListenerControllerState> {
     required String primaryNumber,
     required List<String> allNumbers,
   }) async {
-    if (!PlatformUtils.isAndroid || !state.running) {
-      return;
-    }
+    if (!state.running) return;
 
     try {
       await _updatePrimary(
@@ -164,10 +186,6 @@ class ListenerController extends Notifier<ListenerControllerState> {
     } catch (error) {
       state = state.copyWith(error: 'Primary number update failed: $error');
     }
-  }
-
-  void setIosForegroundMode(bool enabled) {
-    state = state.copyWith(iosForegroundMode: enabled, clearError: true);
   }
 
   void _handleDetectionEvent(DetectionEvent event) {

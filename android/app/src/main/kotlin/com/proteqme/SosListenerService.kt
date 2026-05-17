@@ -4,9 +4,12 @@ import android.Manifest
 import android.app.Service
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
+import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import android.util.Log
 import androidx.core.content.ContextCompat
 
@@ -26,6 +29,7 @@ class SosListenerService : Service() {
 
     private var primaryNumber: String = ""
     private var allNumbers: List<String> = emptyList()
+    private var wakeLock: PowerManager.WakeLock? = null
 
     private val stateTickRunnable =
         object : Runnable {
@@ -49,13 +53,24 @@ class SosListenerService : Service() {
         helpClassifierRunner = HelpClassifierRunner(this)
         helpAsrRunner = HelpAsrRunner(this, runtimeConfig)
 
-        startForeground(
-            NotificationHelper.FOREGROUND_NOTIFICATION_ID,
-            notificationHelper.buildForegroundNotification("Starting SOS listener"),
-        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                NotificationHelper.FOREGROUND_NOTIFICATION_ID,
+                notificationHelper.buildForegroundNotification("Starting SOS listener"),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION,
+            )
+        } else {
+            startForeground(
+                NotificationHelper.FOREGROUND_NOTIFICATION_ID,
+                notificationHelper.buildForegroundNotification("Starting SOS listener"),
+            )
+        }
 
         running = true
+        acquireWakeLock()
         mainHandler.post(stateTickRunnable)
+        ListenerWatchdogScheduler.schedule(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -81,11 +96,21 @@ class SosListenerService : Service() {
         }
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        val prefs = ListenerPrefs(this)
+        if (prefs.userWantsListening) {
+            Log.w(logTag, "Task removed — scheduling listener restart")
+            ListenerWatchdogScheduler.schedule(applicationContext)
+        }
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         running = false
         cooldownUntilMs = 0L
 
+        releaseWakeLock()
         mainHandler.removeCallbacks(stateTickRunnable)
         stopListeningPipeline()
 
@@ -320,6 +345,29 @@ class SosListenerService : Service() {
     private fun emitEvent(event: DetectionEvent) {
         ListenerEventStreamHandler.emit(event)
         Log.i(logTag, "Event emitted: ${event.type.wireName} count=${event.count}")
+    }
+
+    private fun acquireWakeLock() {
+        try {
+            val pm = getSystemService(POWER_SERVICE) as PowerManager
+            wakeLock =
+                pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "proteqme:listener").apply {
+                    setReferenceCounted(false)
+                    acquire(10 * 60 * 60 * 1000L)
+                }
+        } catch (error: Exception) {
+            Log.w(logTag, "WakeLock acquire failed", error)
+        }
+    }
+
+    private fun releaseWakeLock() {
+        try {
+            wakeLock?.let {
+                if (it.isHeld) it.release()
+            }
+        } catch (_: Exception) {
+        }
+        wakeLock = null
     }
 
     companion object {

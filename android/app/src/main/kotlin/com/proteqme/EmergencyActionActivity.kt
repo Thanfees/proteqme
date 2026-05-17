@@ -136,15 +136,17 @@ class EmergencyActionActivity : Activity() {
         const val EXTRA_PHONES = "extra_phones"
         const val EXTRA_MESSAGE = "extra_message"
 
+        fun createCallIntent(context: Context, phone: String): Intent =
+            Intent(context, EmergencyActionActivity::class.java).apply {
+                action = ACTION_CALL
+                putExtra(EXTRA_PHONE, phone)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)
+                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+
         fun launchCall(context: Context, phone: String) {
-            val intent =
-                Intent(context, EmergencyActionActivity::class.java).apply {
-                    action = ACTION_CALL
-                    putExtra(EXTRA_PHONE, phone)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    addFlags(Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)
-                }
-            context.startActivity(intent)
+            context.startActivity(createCallIntent(context, phone))
         }
 
         fun launchSms(context: Context, numbers: List<String>, message: String) {

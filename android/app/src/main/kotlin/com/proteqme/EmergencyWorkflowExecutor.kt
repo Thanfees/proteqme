@@ -29,7 +29,8 @@ class EmergencyWorkflowExecutor(
     private val context: Context,
     private val logTag: String = "EmergencyWorkflow",
 ) {
-    private val callManager = CallManager(context, logTag)
+    private val notificationHelper = NotificationHelper(context)
+    private val callManager = CallManager(context, notificationHelper, logTag)
     private val smsManagerHelper = SmsManagerHelper(context, logTag)
     private val locationHelper = LocationHelper(context, logTag)
 

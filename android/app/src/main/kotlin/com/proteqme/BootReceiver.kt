@@ -15,6 +15,31 @@ class BootReceiver : BroadcastReceiver() {
             return
         }
 
+        try {
+            OverwatchScheduler.rescheduleAfterBoot(context)
+        } catch (error: Exception) {
+            Log.e(TAG, "Overwatch boot reschedule failed", error)
+        }
+
+        val listenerPrefs = ListenerPrefs(context)
+        if (listenerPrefs.userWantsListening && !SosListenerService.isServiceRunning()) {
+            Log.i(TAG, "Boot — resuming SOS listener")
+            val primary = listenerPrefs.primaryNumber()
+            if (primary.isNotEmpty()) {
+                val listenIntent =
+                    Intent(context, SosListenerService::class.java).apply {
+                        action = SosListenerService.ACTION_START
+                        putExtra(SosListenerService.EXTRA_PRIMARY_NUMBER, primary)
+                        putStringArrayListExtra(
+                            SosListenerService.EXTRA_ALL_NUMBERS,
+                            ArrayList(listenerPrefs.allNumbers().ifEmpty { listOf(primary) }),
+                        )
+                    }
+                ContextCompat.startForegroundService(context, listenIntent)
+                ListenerWatchdogScheduler.schedule(context)
+            }
+        }
+
         if (!SosLoopPrefs(context).isActive) {
             return
         }

@@ -4,6 +4,7 @@ import 'package:local_auth/local_auth.dart';
 
 import '../../../data/local/app_database.dart';
 import '../../../services/convex_service.dart';
+import '../../rescue/rescue_mode_service.dart';
 import '../data/sos_loop_datasource.dart';
 import '../../sync/convex_sync_worker.dart';
 
@@ -28,27 +29,39 @@ class _EmergencyOverlayScreenState extends ConsumerState<EmergencyOverlayScreen>
     });
 
     try {
-      final canCheck = await _auth.canCheckBiometrics;
+      // isDeviceSupported() returns true when PIN/pattern/password/biometrics
+      // are set up — this is the definitive check on all OEMs including HyperOS.
       final supported = await _auth.isDeviceSupported();
-      if (!canCheck && !supported) {
-        setState(() => _error = 'No biometric or device lock configured.');
+      if (!supported) {
+        setState(
+          () => _error =
+              'No screen lock set up. Set a PIN, pattern, or fingerprint in device Settings first.',
+        );
         return;
       }
 
-      final ok = await _auth.authenticate(
-        localizedReason: 'Confirm your identity to stop the SOS loop',
-        options: const AuthenticationOptions(
-          biometricOnly: false,
-          stickyAuth: true,
-        ),
-      );
+      bool ok;
+      try {
+        ok = await _auth.authenticate(
+          localizedReason: 'Use fingerprint or PIN to confirm you are safe',
+          options: const AuthenticationOptions(
+            biometricOnly: false,
+            stickyAuth: true,
+            sensitiveTransaction: true,
+          ),
+        );
+      } on Exception catch (e) {
+        setState(() => _error = 'Auth error: $e. Pull down from notification to cancel SOS.');
+        return;
+      }
 
       if (!ok) {
-        setState(() => _error = 'Authentication failed. SOS continues.');
+        setState(() => _error = 'Identity not confirmed — SOS loop continues.');
         return;
       }
 
       await SosLoopDatasource().disarm();
+      await ref.read(rescueModeServiceProvider).stopAdvertising();
       final db = await AppDatabase.instance();
       await db.setSosActive(active: false);
       final convex = ConvexService.tryCreate();
@@ -94,10 +107,37 @@ class _EmergencyOverlayScreenState extends ConsumerState<EmergencyOverlayScreen>
                 const SizedBox(height: 12),
                 const Text(
                   'ProteqMe is sending your location by SMS every few minutes '
-                  'and calling your emergency contacts. This cannot be stopped '
-                  'without verifying your identity.',
+                  'and calling your emergency contacts.\n\n'
+                  'Nearby rescuers with ProteqMe can locate you via Bluetooth mesh.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.white70, height: 1.4),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2A0010),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.bluetooth_searching,
+                          color: Color(0xFF4FC3F7), size: 16),
+                      SizedBox(width: 6),
+                      Text(
+                        'Rescue mesh active',
+                        style: TextStyle(
+                          color: Color(0xFF4FC3F7),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 const Spacer(),
                 if (_error != null) ...[

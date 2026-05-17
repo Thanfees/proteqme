@@ -2,15 +2,17 @@ package com.proteqme
 
 import android.content.Intent
 import androidx.core.content.ContextCompat
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 
-class MainActivity : FlutterActivity() {
+class MainActivity : FlutterFragmentActivity() {
     private val methodChannelName = "com.proteqme/service"
     private val eventChannelName = "com.proteqme/service/events"
+    private val overwatchMethodChannelName = "com.proteqme/overwatch"
+    private val overwatchEventChannelName = "com.proteqme/overwatch/events"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -22,6 +24,71 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 handleMethodCall(call, result)
             }
+
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, overwatchEventChannelName)
+            .setStreamHandler(OverwatchEventBus)
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, overwatchMethodChannelName)
+            .setMethodCallHandler { call, result ->
+                handleOverwatchCall(call, result)
+            }
+    }
+
+    private fun handleOverwatchCall(call: MethodCall, result: MethodChannel.Result) {
+        when (call.method) {
+            "start" -> {
+                val duration = call.argument<Int>("durationSeconds") ?: 0
+                if (duration <= 0) {
+                    result.error("INVALID_ARGUMENT", "durationSeconds must be > 0", null)
+                    return
+                }
+                val destination = call.argument<String>("destination").orEmpty().trim()
+                val userName = call.argument<String>("userName").orEmpty().trim()
+                val primaryNumber = call.argument<String>("primaryNumber").orEmpty().trim()
+                val contactsJson = call.argument<String>("contactsJson").orEmpty()
+
+                if (primaryNumber.isEmpty()) {
+                    result.error(
+                        "INVALID_ARGUMENT",
+                        "primaryNumber is required so we can escalate at expiry",
+                        null,
+                    )
+                    return
+                }
+
+                OverwatchScheduler.schedule(
+                    context = this,
+                    durationSeconds = duration,
+                    destination = destination,
+                    userName = userName,
+                    primaryNumber = primaryNumber,
+                    contactsJson = contactsJson,
+                )
+                result.success(null)
+            }
+
+            "cancel" -> {
+                OverwatchScheduler.cancel(this)
+                NotificationHelper(this).clearOverwatchWarningNotification()
+                OverwatchEventBus.emit(mapOf("type" to "CANCELLED"))
+                result.success(null)
+            }
+
+            "getStatus" -> {
+                val prefs = OverwatchPrefs(this)
+                result.success(
+                    mapOf(
+                        "active" to prefs.isActive(),
+                        "remainingMs" to prefs.remainingMs(),
+                        "destination" to prefs.destination,
+                        "endAtMs" to prefs.endAtMs,
+                        "startAtMs" to prefs.startAtMs,
+                    ),
+                )
+            }
+
+            else -> result.notImplemented()
+        }
     }
 
     private fun handleMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -47,11 +114,19 @@ class MainActivity : FlutterActivity() {
                             ArrayList(numbers),
                         )
                     }
+                val listenerPrefs = ListenerPrefs(this)
+                listenerPrefs.userWantsListening = true
+                listenerPrefs.saveContactPayload(primaryNumber, numbers)
+
                 ContextCompat.startForegroundService(this, intent)
+                ListenerWatchdogScheduler.schedule(this)
                 result.success(null)
             }
 
             "stopService" -> {
+                ListenerPrefs(this).userWantsListening = false
+                ListenerWatchdogScheduler.cancel(this)
+
                 val intent =
                     Intent(this, SosListenerService::class.java).apply {
                         action = SosListenerService.ACTION_STOP
@@ -71,6 +146,8 @@ class MainActivity : FlutterActivity() {
                 val numbers = EmergencyWorkflowExecutor.parseNumbers(call.argument<List<*>>("allNumbers"))
                     .ifEmpty { listOf(primaryNumber) }
 
+                ListenerPrefs(this).saveContactPayload(primaryNumber, numbers)
+
                 if (SosListenerService.isServiceRunning()) {
                     val intent =
                         Intent(this, SosListenerService::class.java).apply {
@@ -88,10 +165,14 @@ class MainActivity : FlutterActivity() {
             }
 
             "getServiceStatus" -> {
+                val listenerPrefs = ListenerPrefs(this)
                 result.success(
                     mapOf(
                         "running" to SosListenerService.isServiceRunning(),
                         "cooldownRemaining" to SosListenerService.cooldownRemainingSeconds(),
+                        "userWantsListening" to listenerPrefs.userWantsListening,
+                        "primaryNumber" to listenerPrefs.primaryNumber(),
+                        "allNumbers" to listenerPrefs.allNumbers(),
                     ),
                 )
             }

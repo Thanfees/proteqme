@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/services.dart';
 
@@ -16,8 +15,6 @@ class SosLoopDatasource {
     required List<EmergencyContact> contacts,
     int smsIntervalSec = 360,
   }) async {
-    if (!Platform.isAndroid) return;
-
     final sorted = List<EmergencyContact>.from(contacts)
       ..sort((a, b) {
         if (a.isPrimary != b.isPrimary) {
@@ -45,13 +42,13 @@ class SosLoopDatasource {
   }
 
   Future<void> disarm() async {
-    if (!Platform.isAndroid) return;
     await _channel.invokeMethod<void>('disarmSosLoop');
   }
 
   Future<bool> isActive() async {
-    if (!Platform.isAndroid) return false;
-    final map = await _channel.invokeMapMethod<String, dynamic>('getSosLoopStatus');
+    final map = await _channel.invokeMapMethod<String, dynamic>(
+      'getSosLoopStatus',
+    );
     return map?['active'] as bool? ?? false;
   }
 }

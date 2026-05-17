@@ -43,3 +43,9 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Convex / app secrets — never commit
+.env.local
+.env.local.bak
+.env.local.bak.*
+.env*.local

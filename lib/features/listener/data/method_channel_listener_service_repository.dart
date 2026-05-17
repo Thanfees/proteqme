@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -23,10 +21,6 @@ class MethodChannelListenerServiceRepository
 
   @override
   Stream<DetectionEvent> get events {
-    if (!Platform.isAndroid) {
-      return const Stream<DetectionEvent>.empty();
-    }
-
     _eventsCache ??= _eventChannel
         .receiveBroadcastStream()
         .map((dynamic rawEvent) {
@@ -43,18 +37,25 @@ class MethodChannelListenerServiceRepository
 
   @override
   Future<ListenerServiceStatus> getServiceStatus() async {
-    if (!Platform.isAndroid) {
-      return const ListenerServiceStatus(running: false, cooldownRemaining: 0);
-    }
-
     try {
       final map = await _methodChannel.invokeMapMethod<String, dynamic>(
         'getServiceStatus',
       );
 
+      final rawNumbers = map?['allNumbers'];
+      final numbers = rawNumbers is List
+          ? rawNumbers
+              .map((e) => e.toString().trim())
+              .where((e) => e.isNotEmpty)
+              .toList(growable: false)
+          : const <String>[];
+
       return ListenerServiceStatus(
         running: map?['running'] as bool? ?? false,
         cooldownRemaining: map?['cooldownRemaining'] as int? ?? 0,
+        userWantsListening: map?['userWantsListening'] as bool? ?? false,
+        primaryNumber: map?['primaryNumber'] as String? ?? '',
+        allNumbers: numbers,
       );
     } on MissingPluginException {
       return const ListenerServiceStatus(running: false, cooldownRemaining: 0);
@@ -66,10 +67,6 @@ class MethodChannelListenerServiceRepository
     required String primaryNumber,
     required List<String> allNumbers,
   }) async {
-    if (!Platform.isAndroid) {
-      return;
-    }
-
     await _methodChannel.invokeMethod<void>('startService', {
       'primaryNumber': primaryNumber,
       'allNumbers': allNumbers,
@@ -78,10 +75,6 @@ class MethodChannelListenerServiceRepository
 
   @override
   Future<void> stopService() async {
-    if (!Platform.isAndroid) {
-      return;
-    }
-
     await _methodChannel.invokeMethod<void>('stopService');
   }
 
@@ -90,10 +83,6 @@ class MethodChannelListenerServiceRepository
     required String primaryNumber,
     required List<String> allNumbers,
   }) async {
-    if (!Platform.isAndroid) {
-      return;
-    }
-
     await _methodChannel.invokeMethod<void>('updatePrimaryNumber', {
       'primaryNumber': primaryNumber,
       'allNumbers': allNumbers,

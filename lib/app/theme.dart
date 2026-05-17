@@ -53,5 +53,64 @@ ThemeData buildAppTheme() {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
     ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: const Color(0x33221232),
+      labelStyle: const TextStyle(color: Color(0xFFB59BC9)),
+      hintStyle: const TextStyle(color: Color(0xFF8A7A9B)),
+      floatingLabelStyle: const TextStyle(color: Color(0xFFFF6AA7)),
+      prefixIconColor: const Color(0xFFFF6AA7),
+      suffixIconColor: const Color(0xFFB59BC9),
+      contentPadding:
+          const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0x44FF63A4)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0x44FF63A4)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFFFF6AA7), width: 1.4),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFFFF3B5C)),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFFFF3B5C), width: 1.4),
+      ),
+    ),
+    bottomSheetTheme: const BottomSheetThemeData(
+      backgroundColor: Color(0xFF1B1126),
+      surfaceTintColor: Color(0xFF1B1126),
+      modalBackgroundColor: Color(0xFF1B1126),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: const Color(0xFF1B1126),
+      surfaceTintColor: const Color(0xFF1B1126),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      titleTextStyle: const TextStyle(
+        color: Color(0xFFFFE7F2),
+        fontSize: 18,
+        fontWeight: FontWeight.w700,
+      ),
+      contentTextStyle: const TextStyle(
+        color: Color(0xFFD9C5E9),
+        fontSize: 14,
+        height: 1.4,
+      ),
+    ),
+    listTileTheme: const ListTileThemeData(
+      iconColor: Color(0xFFFF6AA7),
+      textColor: Color(0xFFFFE7F2),
+      subtitleTextStyle: TextStyle(color: Color(0xFFB59BC9), fontSize: 12),
+    ),
   );
 }

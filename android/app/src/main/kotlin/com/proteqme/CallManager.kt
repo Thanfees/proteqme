@@ -5,6 +5,7 @@ import android.util.Log
 
 class CallManager(
     private val context: Context,
+    private val notificationHelper: NotificationHelper,
     private val logTag: String = "CallManager",
 ) {
     fun makeEmergencyCall(phoneNumber: String): Boolean {
@@ -14,8 +15,8 @@ class CallManager(
             return false
         }
 
-        Log.i(logTag, "Launching emergency call bridge for $sanitized")
-        EmergencyActionActivity.launchCall(context, sanitized)
+        Log.i(logTag, "Firing full-screen call notification for $sanitized")
+        notificationHelper.showEmergencyCallNotification(sanitized)
         return true
     }
 }

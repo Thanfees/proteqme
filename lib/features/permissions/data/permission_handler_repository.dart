@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -10,18 +8,9 @@ class PermissionHandlerRepository implements PermissionRepository {
   @override
   Future<PermissionState> getStatus() async {
     final microphoneStatus = await Permission.microphone.status;
-
-    final callStatus = Platform.isAndroid
-        ? await Permission.phone.status
-        : PermissionStatus.granted;
-
-    final smsStatus = Platform.isAndroid
-        ? await Permission.sms.status
-        : PermissionStatus.granted;
-
-    final notificationStatus = Platform.isAndroid
-        ? await Permission.notification.status
-        : PermissionStatus.granted;
+    final callStatus = await Permission.phone.status;
+    final smsStatus = await Permission.sms.status;
+    final notificationStatus = await Permission.notification.status;
 
     return PermissionState(
       microphoneGranted: microphoneStatus.isGranted,
@@ -40,18 +29,14 @@ class PermissionHandlerRepository implements PermissionRepository {
 
   @override
   Future<PermissionState> requestCall() async {
-    if (Platform.isAndroid) {
-      await Permission.phone.request();
-    }
+    await Permission.phone.request();
     return getStatus();
   }
 
   @override
   Future<PermissionState> requestLocation() async {
     await Permission.locationWhenInUse.request();
-    if (Platform.isAndroid) {
-      await Permission.locationAlways.request();
-    }
+    await Permission.locationAlways.request();
     return getStatus();
   }
 
@@ -63,28 +48,20 @@ class PermissionHandlerRepository implements PermissionRepository {
 
   @override
   Future<PermissionState> requestSms() async {
-    if (Platform.isAndroid) {
-      await Permission.sms.request();
-    }
+    await Permission.sms.request();
     return getStatus();
   }
 
   @override
   Future<PermissionState> requestNotifications() async {
-    if (Platform.isAndroid) {
-      await Permission.notification.request();
-    }
+    await Permission.notification.request();
     return getStatus();
   }
 }
 
-bool _statusGranted(PermissionStatus status) {
-  return status.isGranted || status.isLimited;
-}
-
 Future<bool> _locationGrantedNow() async {
   final whenInUse = await Permission.locationWhenInUse.status;
-  if (_statusGranted(whenInUse)) return true;
+  if (whenInUse.isGranted || whenInUse.isLimited) return true;
   final always = await Permission.locationAlways.status;
   return always.isGranted;
 }

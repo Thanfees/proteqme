@@ -2,7 +2,10 @@ package com.proteqme
 
 import android.app.Service
 import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.os.Build
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.IBinder
 import android.os.Looper
 import android.util.Log
@@ -14,6 +17,8 @@ import androidx.core.content.ContextCompat
 class EmergencySosLoopService : Service() {
     private val logTag = "EmergencySosLoop"
     private val mainHandler = Handler(Looper.getMainLooper())
+    private lateinit var workerThread: HandlerThread
+    private lateinit var workerHandler: Handler
 
     private lateinit var prefs: SosLoopPrefs
     private lateinit var notificationHelper: NotificationHelper
@@ -21,13 +26,16 @@ class EmergencySosLoopService : Service() {
     private lateinit var smsHelper: SmsManagerHelper
     private lateinit var callEscalation: CallEscalationManager
 
+    /** First SMS tick must finish before we ring the first contact. */
+    private var pendingFirstDial = false
+
     private val smsRunnable =
         object : Runnable {
             override fun run() {
                 if (!prefs.isActive) return
                 tickSmsAndGps()
                 val intervalMs = prefs.smsIntervalSec * 1000L
-                mainHandler.postDelayed(this, intervalMs)
+                workerHandler.postDelayed(this, intervalMs)
             }
         }
 
@@ -35,12 +43,15 @@ class EmergencySosLoopService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        workerThread = HandlerThread("EmergencySosLoopWorker").apply { start() }
+        workerHandler = Handler(workerThread.looper)
+
         prefs = SosLoopPrefs(this)
         notificationHelper = NotificationHelper(this)
         notificationHelper.createChannels()
         locationHelper = LocationHelper(this, logTag)
         smsHelper = SmsManagerHelper(this, logTag)
-        val callManager = CallManager(this, logTag)
+        val callManager = CallManager(this, notificationHelper, logTag)
         callEscalation = CallEscalationManager(this, callManager, logTag)
 
         callEscalation.onHumanAnswered = {
@@ -75,18 +86,23 @@ class EmergencySosLoopService : Service() {
                     return START_NOT_STICKY
                 }
 
-                startForeground(
-                    NotificationHelper.SOS_LOOP_NOTIFICATION_ID,
-                    notificationHelper.buildSosLoopNotification("ProteqMe SOS active"),
-                )
-
-                mainHandler.removeCallbacks(smsRunnable)
-                tickSmsAndGps()
-                mainHandler.postDelayed(smsRunnable, prefs.smsIntervalSec * 1000L)
-
-                if (!prefs.callPaused) {
-                    maybeDialNext()
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    startForeground(
+                        NotificationHelper.SOS_LOOP_NOTIFICATION_ID,
+                        notificationHelper.buildSosLoopNotification("ProteqMe SOS active"),
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION or
+                            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+                    )
+                } else {
+                    startForeground(
+                        NotificationHelper.SOS_LOOP_NOTIFICATION_ID,
+                        notificationHelper.buildSosLoopNotification("ProteqMe SOS active"),
+                    )
                 }
+
+                workerHandler.removeCallbacks(smsRunnable)
+                pendingFirstDial = !prefs.callPaused
+                workerHandler.post(smsRunnable)
 
                 return START_STICKY
             }
@@ -96,7 +112,8 @@ class EmergencySosLoopService : Service() {
     }
 
     override fun onDestroy() {
-        mainHandler.removeCallbacks(smsRunnable)
+        workerHandler.removeCallbacks(smsRunnable)
+        workerThread.quitSafely()
         callEscalation.stop()
         if (!prefs.isActive) {
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -126,6 +143,7 @@ class EmergencySosLoopService : Service() {
         prefs.triggeredAtMs = System.currentTimeMillis()
     }
 
+    /** Runs on [workerHandler] thread — never call from main. */
     private fun tickSmsAndGps() {
         val contacts = prefs.loadContacts()
         if (contacts.isEmpty()) {
@@ -133,7 +151,8 @@ class EmergencySosLoopService : Service() {
             return
         }
 
-        val location = locationHelper.getBestLocation()
+        // First-call burst can be slow on cold GPS; cap so we never trigger ANR / FGS timeout.
+        val location = locationHelper.getBestLocation(timeoutMs = 8_000L)
         val numbers = contacts.map { it.phone }.distinct()
 
         if (location != null) {
@@ -145,8 +164,7 @@ class EmergencySosLoopService : Service() {
                         location.longitude,
                         contact.language,
                     )
-                // Stagger so each EmergencyActionActivity can send (avoid pile-up).
-                mainHandler.postDelayed({
+                workerHandler.postDelayed({
                     if (prefs.isActive) {
                         smsHelper.sendEmergencySms(listOf(contact.phone), message)
                     }
@@ -158,9 +176,23 @@ class EmergencySosLoopService : Service() {
             smsHelper.sendEmergencySms(numbers, fallback)
         }
 
-        notificationHelper.updateForeground(
-            "SOS active — location SMS sent (${contacts.size} contacts)",
-        )
+        mainHandler.post {
+            notificationHelper.updateForeground(
+                "SOS active — location SMS sent (${contacts.size} contacts)",
+            )
+        }
+
+        // Ring the first contact only AFTER SMS are dispatched (priority + buffer).
+        if (pendingFirstDial) {
+            pendingFirstDial = false
+            val smsDispatchMs = contacts.size * 1_500L
+            val callDelayMs = smsDispatchMs + 3_000L
+            mainHandler.postDelayed({
+                if (prefs.isActive && !prefs.callPaused) {
+                    maybeDialNext()
+                }
+            }, callDelayMs)
+        }
     }
 
     private fun maybeDialNext() {
@@ -184,14 +216,14 @@ class EmergencySosLoopService : Service() {
         val contacts = prefs.loadContacts()
         contacts.forEachIndexed { index, contact ->
             val msg = SosMessageTemplates.resolved(prefs.userName, contact.language)
-            mainHandler.postDelayed({
+            workerHandler.postDelayed({
                 smsHelper.sendEmergencySms(listOf(contact.phone), msg)
             }, index * 1_500L)
         }
 
         prefs.clearLoop()
         callEscalation.stop()
-        mainHandler.removeCallbacks(smsRunnable)
+        workerHandler.removeCallbacks(smsRunnable)
         notificationHelper.updateForeground("SOS disarmed")
         Log.i(logTag, "SOS loop disarmed")
     }

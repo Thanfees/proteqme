@@ -1,8 +1,6 @@
-import 'dart:io';
-
+/// Android-only build — platform helpers kept for call-sites that import this.
 class PlatformUtils {
   const PlatformUtils._();
 
-  static bool get isAndroid => Platform.isAndroid;
-  static bool get isIos => Platform.isIOS;
+  static const bool isAndroid = true;
 }

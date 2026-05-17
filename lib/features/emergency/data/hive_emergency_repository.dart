@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
@@ -68,24 +67,30 @@ class HiveEmergencyRepository implements EmergencyRepository {
     var smsAttempted = false;
     var callAttempted = false;
 
-    if (Platform.isAndroid && sorted.isNotEmpty) {
+    if (sorted.isNotEmpty) {
+      final db = await AppDatabase.instance();
+      final userName = await db.getUserDisplayName();
+
       await _sosLoop.startLoop(
-        userName: 'ProteqMe User',
+        userName: userName,
         contacts: sorted,
         smsIntervalSec: 360,
       );
       smsAttempted = true;
       callAttempted = callPermissionGranted;
 
-      final db = await AppDatabase.instance();
-      await db.setSosActive(active: true);
+      await db.setSosActive(active: true, userName: userName);
 
-      await _rescue.startIfOffline(userName: 'ProteqMe User');
+      // Always advertise so nearby rescuers can locate the victim even with internet.
+      await _rescue.startAdvertising(userName: userName);
 
       final convex = ConvexService.tryCreate();
       if (convex != null) {
-        final session = await db.db.query('auth_session', where: 'id = ?', whereArgs: [1]);
-        final userId = session.first['user_id'] as String?;
+        final session = await db.db
+            .query('auth_session', where: 'id = ?', whereArgs: [1]);
+        final userId = session.isNotEmpty
+            ? session.first['user_id'] as String?
+            : null;
         if (userId != null) {
           final live = LiveLocationService(convex, _locationDatasource, db);
           await live.start(userId);
@@ -99,10 +104,6 @@ class HiveEmergencyRepository implements EmergencyRepository {
           'locationIncluded': locationIncluded,
         }),
       );
-    } else {
-      // iOS / fallback: one-shot composer flows only.
-      smsAttempted = smsPermissionGranted && allNumbers.isNotEmpty;
-      callAttempted = callPermissionGranted;
     }
 
     final log = EmergencyEventLog(

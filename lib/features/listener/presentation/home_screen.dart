@@ -1,17 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../app/router.dart';
 import '../../../core/constants/app_strings.dart';
-import '../../../core/platform/platform_utils.dart';
 import '../../contacts/domain/entities/emergency_contact.dart';
 import '../../contacts/presentation/contacts_controller.dart';
 import '../../emergency/domain/entities/emergency_trigger_type.dart';
 import '../../emergency/presentation/emergency_controller.dart';
 import '../../emergency/presentation/emergency_overlay_screen.dart';
+import '../../permissions/data/location_service_status_provider.dart';
 import '../../permissions/presentation/permission_controller.dart';
 import 'listener_controller.dart';
+
+/// All possible states the home-screen GPS pill can be in.
+///
+/// Derived from the combination of (a) the runtime location permission and
+/// (b) the live OS Location/GPS toggle reported by
+/// [locationServiceEnabledProvider].
+enum _GpsPillStatus { loading, connected, serviceOff, permissionMissing }
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -27,8 +35,6 @@ class HomeScreen extends ConsumerWidget {
     final listenerController = ref.read(listenerControllerProvider.notifier);
 
     final emergencyState = ref.watch(emergencyControllerProvider);
-    final emergencyLogs =
-        ref.watch(emergencyLogsProvider).valueOrNull ?? const [];
 
     ref.listen<AsyncValue<List<EmergencyContact>>>(contactsProvider, (
       previous,
@@ -64,9 +70,11 @@ class HomeScreen extends ConsumerWidget {
       active,
     );
 
-    final gpsStatusText = permissionState.locationGranted
-        ? 'GPS Connected'
-        : 'Location unavailable';
+    final locationServiceAsync = ref.watch(locationServiceEnabledProvider);
+    final gpsPill = _resolveGpsPillState(
+      permissionGranted: permissionState.locationGranted,
+      serviceAsync: locationServiceAsync,
+    );
 
     return Scaffold(
       body: Container(
@@ -95,169 +103,62 @@ class HomeScreen extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _TopRow(
-                      onManageContactsTap: () =>
-                          Navigator.of(context).pushNamed(AppRouter.contacts),
+                    _HomeHeader(
+                      onSettingsTap: () => Navigator.of(
+                        context,
+                      ).pushNamed(AppRouter.features),
+                    ),
+                    const SizedBox(height: 10),
+                    _GpsStatusPill(
+                      status: gpsPill.status,
+                      label: gpsPill.label,
+                      onTap: _gpsPillTapHandler(gpsPill.status),
                     ),
                     const SizedBox(height: 14),
-                    _GlassCard(
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 12,
-                            height: 12,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFF3BE77A),
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Location Status',
-                                  style: TextStyle(
-                                    color: Color(0xFFBAA8C9),
-                                    fontSize: 12,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  gpsStatusText,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          _StatusPill(
-                            label: active ? 'Active' : 'Idle',
-                            active: active,
-                          ),
-                        ],
+                    _ListeningCard(
+                      active: active,
+                      loading: listenerState.loading,
+                      error: listenerState.error,
+                      statusText: statusText,
+                      onToggle: (enabled) => _onToggle(
+                        enabled,
+                        context,
+                        ref,
+                        primaryContact,
+                        contacts,
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    _GlassCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              const Icon(
-                                Icons.shield_moon_outlined,
-                                color: Color(0xFFFF6CA9),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text(
-                                      'Primary Contact',
-                                      style: TextStyle(
-                                        color: Color(0xFFBAA8C9),
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      primaryContact == null
-                                          ? 'No primary contact selected'
-                                          : '${primaryContact.name} (${primaryContact.phone})',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              IconButton(
-                                tooltip: 'Cloud vault login',
-                                onPressed: () => Navigator.of(
-                                  context,
-                                ).pushNamed(AppRouter.auth),
-                                icon: const Icon(
-                                  Icons.cloud_outlined,
-                                  color: Color(0xFFD9C5E9),
-                                ),
-                              ),
-                              IconButton(
-                                tooltip: 'Detection Logs',
-                                onPressed: () => Navigator.of(
-                                  context,
-                                ).pushNamed(AppRouter.logs),
-                                icon: const Icon(
-                                  Icons.receipt_long_outlined,
-                                  color: Color(0xFFD9C5E9),
-                                ),
-                              ),
-                            ],
+                    if (!active &&
+                        permissionState.microphoneGranted &&
+                        primaryContact != null) ...[
+                      const SizedBox(height: 10),
+                      Material(
+                        color: const Color(0x44FF6B35),
+                        borderRadius: BorderRadius.circular(12),
+                        child: ListTile(
+                          dense: true,
+                          leading: const Icon(
+                            Icons.warning_amber,
+                            color: Colors.orange,
                           ),
-                          const SizedBox(height: 10),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text(
-                                      'SOS Listening Mode',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      statusText,
-                                      style: const TextStyle(
-                                        color: Color(0xFFCCB7DC),
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Switch.adaptive(
-                                value: active,
-                                onChanged: listenerState.loading
-                                    ? null
-                                    : (enabled) => _onToggle(
-                                        enabled,
-                                        context,
-                                        ref,
-                                        primaryContact,
-                                        contacts,
-                                      ),
-                              ),
-                            ],
+                          title: const Text(
+                            'Listening stopped?',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                            ),
                           ),
-                          if (listenerState.loading) ...[
-                            const SizedBox(height: 8),
-                            const LinearProgressIndicator(
-                              borderRadius: BorderRadius.all(
-                                Radius.circular(99),
-                              ),
-                            ),
-                          ],
-                          if (listenerState.error != null) ...[
-                            const SizedBox(height: 8),
-                            Text(
-                              listenerState.error!,
-                              style: const TextStyle(
-                                color: Color(0xFFFF8A8A),
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
-                        ],
+                          subtitle: const Text(
+                            'On Poco/Xiaomi open Features → Poco setup, then turn listening on again.',
+                            style: TextStyle(fontSize: 11),
+                          ),
+                          onTap: () => Navigator.of(
+                            context,
+                          ).pushNamed(AppRouter.deviceSetup),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 28),
+                    ],
+                    const SizedBox(height: 14),
                     Center(
                       child: _SosButton(
                         busy: emergencyState.loading,
@@ -275,70 +176,32 @@ class HomeScreen extends ConsumerWidget {
                       child: Text(
                         'Tap or press & hold for emergency alert',
                         style: TextStyle(
-                          color: Color(0xFFB5A2C7),
+                          color: Color(0xFFB59BC9),
                           fontSize: 13,
                         ),
                       ),
                     ),
-                    const SizedBox(height: 14),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size.fromHeight(56),
-                          backgroundColor: const Color(0x551E102C),
-                        ),
-                        onPressed: emergencyState.loading
-                            ? null
-                            : () => _onEmergencyTrigger(
-                                context: context,
-                                ref: ref,
-                                triggerType: EmergencyTriggerType.manualTrigger,
-                                primaryContact: primaryContact,
-                                contacts: contacts,
-                              ),
-                        icon: const Icon(Icons.notifications_active_outlined),
-                        label: const Text(
-                          'MANUAL TRIGGER',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ),
-                    ),
-                    if (!permissionState.smsGranted ||
-                        !permissionState.locationGranted) ...[
-                      const SizedBox(height: 12),
-                      _GlassCard(
-                        borderColor: const Color(0x66FFA45E),
-                        child: Text(
-                          _buildPermissionWarning(
-                            smsGranted: permissionState.smsGranted,
-                            locationGranted: permissionState.locationGranted,
-                          ),
-                          style: const TextStyle(color: Color(0xFFFFD8BF)),
-                        ),
-                      ),
-                    ],
                     if (emergencyState.error != null) ...[
-                      const SizedBox(height: 12),
-                      _GlassCard(
-                        borderColor: const Color(0x66FF7D7D),
+                      const SizedBox(height: 8),
+                      Center(
                         child: Text(
                           emergencyState.error!,
-                          style: const TextStyle(color: Color(0xFFFFA6A6)),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Color(0xFFFFA6A6),
+                            fontSize: 12,
+                          ),
                         ),
                       ),
                     ],
-                    const SizedBox(height: 18),
+                    const SizedBox(height: 14),
                     Row(
                       children: [
                         Expanded(
-                          child: _QuickActionCard(
-                            icon: Icons.people_alt_outlined,
-                            title: 'Contact Save',
-                            subtitle: 'Add trusted guardians',
+                          child: _HomeActionCard(
+                            icon: Icons.contacts_rounded,
+                            title: 'Contacts',
+                            subtitle: '${contacts.length} saved',
                             onTap: () => Navigator.of(
                               context,
                             ).pushNamed(AppRouter.contacts),
@@ -346,60 +209,17 @@ class HomeScreen extends ConsumerWidget {
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                          child: _QuickActionCard(
-                            icon: Icons.tune_rounded,
-                            title: 'Settings',
-                            subtitle: 'Permissions & safety',
-                            onTap: () => _openPermissions(context, ref),
+                          child: _HomeActionCard(
+                            icon: Icons.dashboard_rounded,
+                            title: 'Features',
+                            subtitle: 'All tools',
+                            onTap: () => Navigator.of(
+                              context,
+                            ).pushNamed(AppRouter.features),
                           ),
                         ),
                       ],
                     ),
-                    if (emergencyLogs.isNotEmpty) ...[
-                      const SizedBox(height: 14),
-                      _GlassCard(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Recent Emergency Events',
-                              style: TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                            const SizedBox(height: 8),
-                            for (final log in emergencyLogs.take(3))
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 8),
-                                child: Row(
-                                  children: [
-                                    const Icon(
-                                      Icons.fiber_manual_record,
-                                      size: 10,
-                                      color: Color(0xFFFF5FA0),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: Text(
-                                        '${log.type}  -  ${DateTime.fromMillisecondsSinceEpoch(log.timestampMs).toLocal()}',
-                                        style: const TextStyle(fontSize: 12),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ],
-                    if (PlatformUtils.isIos) ...[
-                      const SizedBox(height: 12),
-                      const Text(
-                        'iOS supports manual trigger flows but not continuous background auto-call detection.',
-                        style: TextStyle(
-                          color: Color(0xFFD9C6E7),
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
                   ],
                 ),
               ),
@@ -442,25 +262,12 @@ class HomeScreen extends ConsumerWidget {
           .toSet()
           .toList(growable: false);
 
-      if (PlatformUtils.isAndroid) {
-        await controller.startAndroid(
-          primaryNumber: primaryContact.phone,
-          allNumbers: allNumbers,
-        );
-      } else {
-        controller.setIosForegroundMode(true);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('iOS mode is foreground-only and cannot auto-call.'),
-          ),
-        );
-      }
+      await controller.startListening(
+        primaryNumber: primaryContact.phone,
+        allNumbers: allNumbers,
+      );
     } else {
-      if (PlatformUtils.isAndroid) {
-        await controller.stopAndroid();
-      } else {
-        controller.setIosForegroundMode(false);
-      }
+      await controller.stopListening();
     }
   }
 
@@ -520,8 +327,7 @@ class HomeScreen extends ConsumerWidget {
       }
     }
 
-    if (PlatformUtils.isAndroid &&
-        (!permissions.callGranted || !permissions.smsGranted)) {
+    if (!permissions.callGranted || !permissions.smsGranted) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -602,19 +408,6 @@ class HomeScreen extends ConsumerWidget {
     return AppStrings.statusStopped;
   }
 
-  String _buildPermissionWarning({
-    required bool smsGranted,
-    required bool locationGranted,
-  }) {
-    if (!smsGranted && !locationGranted) {
-      return 'SMS and location permissions are missing. SMS will fall back to composer and location may be unavailable.';
-    }
-    if (!smsGranted) {
-      return 'SMS permission is missing. The app will open SMS composer as fallback.';
-    }
-    return 'Location permission is missing. Emergency SMS will be sent without location.';
-  }
-
   Future<void> _openPermissions(BuildContext context, WidgetRef ref) async {
     await Navigator.of(context).pushNamed(AppRouter.permissions);
     if (!context.mounted) {
@@ -622,48 +415,80 @@ class HomeScreen extends ConsumerWidget {
     }
     await ref.read(permissionControllerProvider.notifier).refresh();
   }
+
+  /// Returns a tap handler for the GPS pill, or `null` if the pill should
+  /// be inert (e.g. already connected, or while we're still checking).
+  VoidCallback? _gpsPillTapHandler(_GpsPillStatus status) {
+    switch (status) {
+      case _GpsPillStatus.serviceOff:
+        return () => Geolocator.openLocationSettings();
+      case _GpsPillStatus.permissionMissing:
+        return () => Geolocator.openAppSettings();
+      case _GpsPillStatus.connected:
+      case _GpsPillStatus.loading:
+        return null;
+    }
+  }
 }
 
-class _TopRow extends StatelessWidget {
-  const _TopRow({required this.onManageContactsTap});
+/// Folds the runtime location permission and the live OS GPS service stream
+/// into the single piece of state the pill needs to render itself.
+({_GpsPillStatus status, String label}) _resolveGpsPillState({
+  required bool permissionGranted,
+  required AsyncValue<bool> serviceAsync,
+}) {
+  if (!permissionGranted) {
+    return (
+      status: _GpsPillStatus.permissionMissing,
+      label: 'Location permission needed',
+    );
+  }
 
-  final VoidCallback onManageContactsTap;
+  return serviceAsync.when(
+    data: (enabled) => enabled
+        ? (status: _GpsPillStatus.connected, label: 'GPS Connected')
+        : (
+            status: _GpsPillStatus.serviceOff,
+            label: 'GPS off — turn on Location',
+          ),
+    loading: () => (status: _GpsPillStatus.loading, label: 'Checking GPS…'),
+    // Treat a stream error the same as "service off" so we still nudge the
+    // user toward the right settings page instead of pretending GPS works.
+    error: (_, _) => (
+      status: _GpsPillStatus.serviceOff,
+      label: 'GPS off — turn on Location',
+    ),
+  );
+}
+
+class _HomeHeader extends StatelessWidget {
+  const _HomeHeader({required this.onSettingsTap});
+
+  final VoidCallback onSettingsTap;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        const _BrandCircleLogo(size: 56),
+        const _BrandCircleLogo(size: 42),
         const SizedBox(width: 10),
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'ProteqMe',
-                style: GoogleFonts.cinzel(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFFFFE7F2),
-                ),
-              ),
-              const Text(
-                'Your Personal Safety Companion',
-                style: TextStyle(color: Color(0xFFB59BC9), fontSize: 12),
-              ),
-            ],
+          child: Text(
+            'ProteqMe',
+            style: GoogleFonts.lexend(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFFFFE7F2),
+            ),
           ),
         ),
-        FilledButton.icon(
-          style: FilledButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            backgroundColor: const Color(0xFF2A143A),
-          ),
-          onPressed: onManageContactsTap,
-          icon: const Icon(Icons.groups_2_outlined, size: 18),
-          label: const Text(
-            'Manage Contact',
-            style: TextStyle(fontWeight: FontWeight.w700),
+        IconButton(
+          tooltip: 'Settings',
+          onPressed: onSettingsTap,
+          icon: const Icon(
+            Icons.settings_rounded,
+            color: Color(0xFFD9C5E9),
+            size: 24,
           ),
         ),
       ],
@@ -720,14 +545,154 @@ class _BrandCircleLogo extends StatelessWidget {
   }
 }
 
-class _GlassCard extends StatelessWidget {
-  const _GlassCard({
-    required this.child,
-    this.borderColor = const Color(0x44FF63A4),
+class _GpsStatusPill extends StatelessWidget {
+  const _GpsStatusPill({
+    required this.status,
+    required this.label,
+    this.onTap,
   });
 
+  final _GpsPillStatus status;
+  final String label;
+  final VoidCallback? onTap;
+
+  Color get _accentColor {
+    switch (status) {
+      case _GpsPillStatus.connected:
+        return const Color(0xFF3BE77A);
+      case _GpsPillStatus.serviceOff:
+        return const Color(0xFFFFB347);
+      case _GpsPillStatus.permissionMissing:
+        return const Color(0xFFFF5C7A);
+      case _GpsPillStatus.loading:
+        return const Color(0xFFB59BC9);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _accentColor;
+    final pill = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        color: const Color(0x66171128),
+        border: Border.all(color: color.withValues(alpha: 0.55)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.location_on_rounded, color: color, size: 16),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFFD9C5E9),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const StadiumBorder(),
+          child: pill,
+        ),
+      ),
+    );
+  }
+}
+
+class _ListeningCard extends StatelessWidget {
+  const _ListeningCard({
+    required this.active,
+    required this.loading,
+    required this.error,
+    required this.statusText,
+    required this.onToggle,
+  });
+
+  final bool active;
+  final bool loading;
+  final String? error;
+  final String statusText;
+  final ValueChanged<bool> onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    return _GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.shield_moon_outlined,
+                color: Color(0xFFFF6AA7),
+                size: 22,
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'SOS Listening Mode',
+                  style: TextStyle(
+                    color: Color(0xFFFFE7F2),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              _StatusPill(
+                label: active ? 'Active' : 'Idle',
+                active: active,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  statusText,
+                  style: const TextStyle(
+                    color: Color(0xFFD9C5E9),
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+              Switch(value: active, onChanged: loading ? null : onToggle),
+            ],
+          ),
+          if (loading) ...[
+            const SizedBox(height: 8),
+            const LinearProgressIndicator(
+              borderRadius: BorderRadius.all(Radius.circular(99)),
+            ),
+          ],
+          if (error != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              error!,
+              style: const TextStyle(color: Color(0xFFFF8A8A), fontSize: 12),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _GlassCard extends StatelessWidget {
+  const _GlassCard({required this.child});
+
   final Widget child;
-  final Color borderColor;
 
   @override
   Widget build(BuildContext context) {
@@ -735,14 +700,14 @@ class _GlassCard extends StatelessWidget {
       width: double.infinity,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: borderColor),
+        border: Border.all(color: const Color(0x44FF63A4)),
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [Color(0xD6221232), Color(0xD6171128)],
         ),
       ),
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       child: child,
     );
   }
@@ -822,8 +787,8 @@ class _SosButton extends StatelessWidget {
   }
 }
 
-class _QuickActionCard extends StatelessWidget {
-  const _QuickActionCard({
+class _HomeActionCard extends StatelessWidget {
+  const _HomeActionCard({
     required this.icon,
     required this.title,
     required this.subtitle,
@@ -844,11 +809,11 @@ class _QuickActionCard extends StatelessWidget {
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0x44FF5A9D)),
+          border: Border.all(color: const Color(0x44FF63A4)),
           gradient: const LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xD6211431), Color(0xD6171026)],
+            colors: [Color(0xD6221232), Color(0xD6171128)],
           ),
         ),
         child: Column(
@@ -863,12 +828,22 @@ class _QuickActionCard extends StatelessWidget {
               ),
               child: Icon(icon, color: const Color(0xFFFF88BC)),
             ),
-            const SizedBox(height: 22),
-            Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 18),
+            Text(
+              title,
+              style: const TextStyle(
+                color: Color(0xFFFFE7F2),
+                fontWeight: FontWeight.w700,
+                fontSize: 15,
+              ),
+            ),
             const SizedBox(height: 4),
             Text(
               subtitle,
-              style: const TextStyle(fontSize: 12, color: Color(0xFFB29CC6)),
+              style: const TextStyle(
+                fontSize: 12,
+                color: Color(0xFFB59BC9),
+              ),
             ),
           ],
         ),

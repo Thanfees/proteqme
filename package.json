@@ -1,0 +1,14 @@
+{
+  "name": "proteqme",
+  "private": true,
+  "scripts": {
+    "convex:dev": "npm install && npx convex dev",
+    "convex:deploy": "npm install && npx convex deploy"
+  },
+  "dependencies": {
+    "convex": "^1.21.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}
